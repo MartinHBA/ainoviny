@@ -101,7 +101,7 @@ The Java backend and the Static Web App are separate resources. Once `/api/artic
 3. In that environment, add variable `FUNCTION_API_URL` with value `https://verejnydohlad-wny6o5yct2uf2.azurewebsites.net/api` for this already provisioned instance. For another instance, use the `functionApiUrl` Bicep output.
 4. In Azure Portal open Static Web App **`verejnydohlad-wny6o5yct2uf2-web`** (not the Function App), choose **Manage deployment token**, and copy its token into the GitHub environment secret **`AZURE_STATIC_WEB_APPS_API_TOKEN`**. Keep the token in the GitHub secret; do not put it in source files or chat.
 5. Open GitHub **Actions → Deploy newspaper frontend → Run workflow**, select `main`, tick `confirm_deployment` and run it. The runner installs Node 22, runs `npm ci`, tests/build, checks the public API and uploads only the frontend.
-6. After the job succeeds, open `https://proud-field-0b4892d03.2.azurestaticapps.net` for this instance, or the `staticWebAppUrl` Bicep output. Empty editions are expected before human publication.
+6. After the job succeeds, open `https://proud-field-0b4892d03.2.azurestaticapps.net` for this instance, or the `staticWebAppUrl` Bicep output. Empty editions are expected until an approved article is published; enable the automatic editor below for unattended publication.
 
 To upload the local source using your normal Git login, run from the repository root:
 
@@ -115,7 +115,27 @@ This frontend workflow creates no Azure resources and does not call the AI model
 
 #### Function App Deployment Center
 
-The GitHub screen inside **Function App → Deployment Center** configures backend deployment. Select GitHub owner **MartinHBA**, repository **ainoviny**, and branch **main**. In the generated workflow preview ensure the Java build uses `backend/pom.xml`, for example `mvn -B -f backend/pom.xml verify`, and the upload package points to `backend/target/azure-functions/verejny-dohlad-local`. The Maven package folder name differs from the actual Azure Function App name, which remains `verejnydohlad-wny6o5yct2uf2`.
+The backend is already deployed if the earlier ZIP upload succeeded and `/api/articles` responds. Deployment Center sets up future backend releases through GitHub; npm is not needed for this Java build.
+
+1. Open Function App **`verejnydohlad-wny6o5yct2uf2` → Deployment → Deployment Center**.
+2. Choose **Continuous Deployment (CI/CD)**, source **GitHub**, and build provider **GitHub Actions**.
+3. Select owner **MartinHBA**, repository **ainoviny**, and branch **main**.
+4. Choose **Add a workflow**. For authentication choose **User-assigned identity** and the suggested new identity. The portal creates a deployment identity, grants Website Contributor on this Function App, configures GitHub OIDC and adds the workflow's authentication values to GitHub. This identity is separate from the Function App's runtime managed identity.
+5. Select **Preview file**. This repository has its Maven project in `backend`, not at the repository root. For the Java template set:
+
+```yaml
+env:
+  AZURE_FUNCTIONAPP_NAME: 'verejnydohlad-wny6o5yct2uf2'
+  POM_XML_DIRECTORY: 'backend'
+  JAVA_VERSION: '21'
+```
+
+The Maven step must run in `backend` (through `working-directory: ${{ env.POM_XML_DIRECTORY }}`) and build with `mvn -B clean verify -DfunctionAppName=${{ env.AZURE_FUNCTIONAPP_NAME }}`. With this override, the artifact folder is `backend/target/azure-functions/verejnydohlad-wny6o5yct2uf2`. If the generated template does **not** override `functionAppName`, the folder instead remains `backend/target/azure-functions/verejny-dohlad-local`; the actual deployment target is still `verejnydohlad-wny6o5yct2uf2`. Ensure artifact upload and deployment use the folder actually built, with `host.json` at the package root, and exclude `local.settings.json`. Preserve the portal-generated login values and OIDC permissions.
+
+6. Select **Save**. If the preview cannot be edited, edit the new workflow under GitHub **Code → .github/workflows** after saving and commit the corrections. The initial run may fail until the Maven path is corrected. Check the generated workflow under **Actions** or the portal's **Logs** tab; subsequent pushes to `main` trigger it automatically.
+7. After a successful deployment, verify `Invoke-RestMethod 'https://verejnydohlad-wny6o5yct2uf2.azurewebsites.net/api/articles'`. An empty articles array is a valid response before human publication.
+
+See [Microsoft's Deployment Center instructions and Java workflow template](https://learn.microsoft.com/azure/azure-functions/functions-how-to-github-actions). The existing full-release `deploy.yml` expects separately configured environment variables and an OIDC credential scoped to `azure-production`; portal-generated authentication does not automatically configure that workflow.
 
 The portal-generated workflow does not deploy this separate React Static Web App. Use `deploy-frontend.yml` for it. Choose one backend deployment workflow for your releases; if the portal generates a continuous backend workflow, the existing full `deploy.yml` can remain unused. Saving Deployment Center configuration creates/updates a workflow in GitHub; if that happens before your first local push, fetch and reconcile the remote changes before pushing. Do not force-push over the portal-generated commit.
 
@@ -147,10 +167,11 @@ On a new account the public API should return an empty `articles` array and `nex
 
 The helper runs in a child PowerShell process with execution allowed for that invocation only. It does not change the user's persistent execution policy. You can also invoke `./scripts/package-backend.ps1` directly if your current PowerShell policy already permits project scripts.
 
-For Windows Function hosting the Azure site setting is `javaVersion: '21.0'`; Java/Maven and GitHub setup still use Java 21. An older infrastructure template used `'21'`, which can produce an `Invalid version: 21` CLI warning even while ZIP upload succeeds. Do not interrupt or repeat an upload solely because of that warning: check its final result and the public API first. The corrected Bicep applies `'21.0'` on the next infrastructure deployment. To update an already provisioned app after its upload completes, use:
+For this Windows Consumption Function App keep the site setting `javaVersion: '21'`, matching Maven and GitHub Java 21. Azure CLI 2.91.0 can report an `Invalid version: 21` warning during ZIP deployment because its runtime list uses `21.0`; that warning alone is not a deployment failure. Do not change the Function host to `21.0` to suppress it: a production check on 12 October 2026 showed that this left `JAVA_HOME` unresolved, crashed the Java worker and returned HTTP 502. The verified Function setting is `21`. If an earlier template or command applied `21.0`, restore it through the resource configuration API:
 
 ```powershell
-az functionapp config set --resource-group $appResourceGroup --name $functionAppName --java-version 21.0 --query javaVersion --output tsv
+$appSubscriptionId = az account show --query id --output tsv
+az resource update --ids "/subscriptions/$appSubscriptionId/resourceGroups/$appResourceGroup/providers/Microsoft.Web/sites/$functionAppName/config/web" --api-version 2023-12-01 --set properties.javaVersion=21 --query properties.javaVersion --output tsv
 ```
 
 Updating runtime configuration may restart the Function host. Verify the API again afterward; a successful ZIP upload by itself does not establish that all functions started correctly.
@@ -178,13 +199,48 @@ try {
 Write-Output $staticWebAppUrl
 ```
 
-Open the returned URL. An empty newspaper edition is expected until a human publishes the first approved article. Frontend release and later article publication are separate: new approved articles appear through the API without another frontend build.
+Open the returned URL. An empty newspaper edition is expected until the first approved article is published. Frontend release and later article publication are separate: new approved articles appear through the API without another frontend build.
 
 Deployment command references: [Java Function ZIP deployment](https://learn.microsoft.com/azure/azure-functions/deployment-zip-push), [SWA CLI deployment](https://azure.github.io/static-web-apps-cli/docs/cli/swa-deploy/).
 
+#### Activate the automatic AI editor
+
+This replaces routine human editorial work. Code changes alone do not activate it in an already provisioned Function App. First deploy the updated backend (the same ZIP/GitHub route as before) and frontend (GitHub **Deploy newspaper frontend**), so the website accurately discloses AI approval. Keep automatic publication disabled until both releases succeed.
+
+The existing instance has only `gpt-4.1-mini`. The Azure model catalogue for `myAItest` in West Europe lists `gpt-4.1` / `2025-04-14` with GlobalStandard support, checked 12 October 2026. Read-only quota checks showed 1,000 capacity units available for GlobalStandard gpt-4.1 and 4,999 remaining for gpt-4.1-mini. Add the editor deployment in the **same** OpenAI account; no new OpenAI account, Storage Account or Function App is needed. It requires separate approval of its usage costs under the original provisioning requirement. Do not run the create command until that approval is given.
+
+The current writer deployment has capacity 1: just 1 request/minute and 1,000 tokens/minute. Its generation output allowance alone is 2,200 tokens, before source input. The commands below also correct that existing deployment to capacity 300 (300,000 TPM), and give the editor capacity 100 (100,000 TPM), within the observed quota. These are GlobalStandard rate-limit allocations, not reserved provisioned-throughput units; actual input/output token usage is billed. Capacity does not replace the application's 16-call/3-article daily limits. See [Azure quota allocation](https://learn.microsoft.com/azure/ai-foundry/openai/how-to/quota) and [Azure OpenAI pricing](https://azure.microsoft.com/pricing/details/azure-openai/). Review model/version and quota again for another account before applying.
+
+```powershell
+# Local compilation and read-only provisioning preview:
+az bicep build --file infrastructure/editor-model.bicep --outfile .local/editor-model.json
+if ($LASTEXITCODE -ne 0) { throw 'Editor model template compilation failed.' }
+az deployment group what-if --resource-group AI --template-file infrastructure/editor-model.bicep --parameters resourceName=myAItest configureWriterCapacity=true
+if ($LASTEXITCODE -ne 0) { throw 'Editor model preview failed.' }
+
+# After model cost/provisioning approval:
+az deployment group create --name newspaper-editor-model --resource-group AI --template-file infrastructure/editor-model.bicep --parameters resourceName=myAItest configureWriterCapacity=true
+if ($LASTEXITCODE -ne 0) { throw 'Editor model deployment failed; keep automatic publication disabled.' }
+
+# Enable only after the updated backend/frontend and editor model are deployed:
+az functionapp config appsettings set --resource-group verejny-dohlad --name verejnydohlad-wny6o5yct2uf2 --settings AZURE_OPENAI_EDITOR_DEPLOYMENT=gpt-4.1 AUTO_PUBLISH_ENABLED=true MAX_AI_CALLS_PER_DAY=16 --output none
+if ($LASTEXITCODE -ne 0) { throw 'Automatic editor settings update failed.' }
+Invoke-RestMethod 'https://verejnydohlad-wny6o5yct2uf2.azurewebsites.net/api/articles'
+```
+
+Existing Function managed identity OpenAI User permission applies to both model deployments in that account. Updating settings can restart the host. No paid AI call is made by the final public API check; the next timer run will call the models and publish only accepted articles. Inspect `MorningEdition` logs: run summaries include `collected`, `drafts`, `published`, `rejected` and `errors`. A missing deployment, exhausted budget or failed editor request never triggers an approval fallback.
+
+For subsequent infrastructure deployments pass `openAiEditorDeployment=gpt-4.1 autoPublishEnabled=true` to `main.bicep`, or set these parameters in your parameter file. Their default is disabled, so deploying the defaults later will suspend automatic publication. Token pricing is not hardcoded; set `EDITOR_INPUT_USD_PER_MILLION` and `EDITOR_OUTPUT_USD_PER_MILLION` to the chosen Azure model/SKU rates if estimated cost logging is wanted.
+
+To suspend automatic publication without deleting data:
+
+```powershell
+az functionapp config appsettings set --resource-group verejny-dohlad --name verejnydohlad-wny6o5yct2uf2 --settings AUTO_PUBLISH_ENABLED=false --output none
+```
+
 #### Initialize and use editorial operations
 
-Use the editor RBAC described below before the first collection run. The logged-in human identity needs Blob/Table Data Contributor; ordinary management-plane Contributor access alone does not grant application-data access.
+The timer initializes source registry rows automatically as sources are checked, so unattended operation requires no human CLI initialization. The commands below are optional for manual registry snapshots and recovery. For those commands use the editor RBAC described below: the logged-in human identity needs Blob/Table Data Contributor; ordinary management-plane Contributor access alone does not grant application-data access.
 
 ```powershell
 Remove-Item Env:APP_STORAGE_CONNECTION_STRING -ErrorAction SilentlyContinue
@@ -196,7 +252,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/editorial/editor
 if ($LASTEXITCODE -ne 0) { throw 'Editorial storage initialization failed.' }
 ```
 
-With explicit cloud `STORAGE_ACCOUNT_NAME`, the editorial wrapper ignores local emulator settings. Initialize the registry once, then use `collect` for real originals and `run` for the paid AI pipeline. Follow `editorial-workflow.md` to inspect, correct, approve and publish drafts. Only the Function identity's OpenAI permission is assigned by `main.bicep`; the human editor needs OpenAI User separately to generate/recheck drafts.
+With explicit cloud `STORAGE_ACCOUNT_NAME`, the editorial wrapper ignores local emulator settings. The optional `init` stores the full registry snapshot. Use `collect` for real originals and `run` for the paid AI pipeline when manual operations are needed. Follow `editorial-workflow.md` for optional recovery; automatic operation does not require listing, approving or publishing drafts by hand. Only the Function identity's OpenAI permission is assigned by `main.bicep`; a human using the AI CLI needs OpenAI User separately.
 
 ## CI/CD configuration
 
@@ -219,7 +275,7 @@ Secrets: `AZURE_STATIC_WEB_APPS_API_TOKEN` for the specific SWA and `APPLICATION
 
 `ci.yml` runs Java/React, browser and Azurite integration tests, and Bicep compilation on push/PR. It never logs into Azure. `provision.yml` requires `approve_paid_resources=true` and references existing AI/monitoring. It does not create the optional OpenAI account. `deploy.yml` requires `confirm_deployment=true`, tests/builds, zip-deploys Java Function package and uploads only static frontend assets; it does not provision.
 
-After provisioning, run the secured CLI once with production `STORAGE_ACCOUNT_NAME`, Azure login/RBAC and `AI_MODE=azure` to initialize registry snapshots (`init`). Containers/tables are already defined by Bicep. Do not use local emulator environment settings for production. The backend collector reads its packaged registry; storing a snapshot is operational metadata.
+Containers/tables are defined by Bicep. The backend collector reads its packaged registry and upserts checked source rows automatically. A full registry snapshot (`init`) is optional operational metadata. Do not use local emulator environment settings for production.
 
 ## Editor RBAC
 
@@ -232,7 +288,7 @@ This MVP trusts authorized developer/editor identities with underlying Storage w
 After an approved deployment:
 
 1. `check-feeds` succeeds; `collect` stores real originals. Confirm AI endpoint/deployment/role on the intended account before explicitly running paid `run`.
-2. Review one grounded draft and compare every claim with original sources. Approve and publish with CLI.
+2. In automatic mode check the final editor audit and `published`/`rejected` run counters. In manual mode inspect a draft, compare its claims with originals, and approve/publish through CLI. Model-quality evaluation before launch is separate from unattended daily operation.
 3. Verify `/api/articles` and a shareable `/clanok/{slug}` show the same content, sources and disclosure; unapproved slugs return 404.
 4. Check Function CORS with the exact production browser origin. Ensure private Blob anonymous access fails.
 5. Check Application Insights run/exception logs and token usage. Set budget alerts externally in the subscription; the MVP call counter controls AI attempts, not all cloud charges.

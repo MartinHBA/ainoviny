@@ -5,6 +5,9 @@ param openAiResourceName = 'myAItest'
 param openAiResourceGroup = 'AI'
 param openAiEndpoint = 'https://myaitest.openai.azure.com/'
 param openAiDeployment = 'gpt-4.1-mini'
+param openAiEditorDeployment = 'gpt-4.1'
+// This instance has the approved editor deployment; preserve automatic publication on redeploy.
+param autoPublishEnabled = true
 // Supply existing Application Insights securely during deployment, or provision an optional
 // component against an existing workspace. No extra Storage Account is ever provisioned.
 param createApplicationInsights = false

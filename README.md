@@ -1,6 +1,6 @@
 # VEREJNÝ DOHĽAD
 
-Slovak digital newspaper with a Java 21 Azure Functions editorial pipeline, React/TypeScript newspaper frontend, Blob/Table persistence, human approval CLI, Bicep and GitHub Actions. No cloud resources are provisioned by installing or running the local project.
+Slovak digital newspaper with a Java 21 Azure Functions editorial pipeline, React/TypeScript newspaper frontend, Blob/Table persistence, a separate AI chief editor for automatic publication, optional manual recovery CLI, Bicep and GitHub Actions. No cloud resources are provisioned by installing or running the local project.
 
 ## Local setup
 
@@ -28,7 +28,7 @@ npm run storage
 npm run frontend
 ```
 
-Visit **http://localhost:5173**. An empty edition is intentional until a human publishes an article. APIs: `http://localhost:7071/api/articles`, `/api/articles/{slug}`, `/api/editions/latest`. Drafts and storage blobs are private.
+Visit **http://localhost:5173**. An empty edition is intentional until an approved article is published. APIs: `http://localhost:7071/api/articles`, `/api/articles/{slug}`, `/api/editions/latest`. Drafts and storage blobs are private. For unattended production, activate [the automatic AI editor](docs/deployment.md#activate-the-automatic-ai-editor): `gpt-4.1-mini` writes, a separate configurable `gpt-4.1` deployment decides publication. No routine human review is needed; failed or sensitive articles stay unpublished. Automatic publication is disabled until explicitly configured.
 
 The default `AI_MODE=mock` makes **zero paid AI calls**. It assigns real material a score of zero; only explicitly marked synthetic fixtures generate offline drafts. No fake news is seeded on startup. Create an optional local fixture to exercise review/publishing:
 
@@ -83,6 +83,6 @@ Static Web Apps **Free** calls the Function App URL directly with restricted COR
 
 ## Boundaries
 
-AI grounding checks compare text with retrieved material; they cannot prove the issuing institution's assertions. Human approval is mandatory. The single low-cost model performs separate analysis, generation and verification calls with persisted daily budgets. No automatic publication, autonomous agents, vector search, copied editorial images or CMS.
+AI grounding checks compare text with retrieved material; they cannot prove the issuing institution's assertions. The low-cost writing model performs separate analysis, generation and verification calls. In automatic mode a stronger AI chief editor approves publication, with private audits and shared daily budgets; sensitive or rejected stories remain unpublished. Optional human CLI recovery is available. No autonomous tool loops, vector search, copied editorial images or CMS.
 
 Client rendering supports shareable URLs but provides limited crawler/social preview metadata. A later build can prerender approved articles from the public API or add server rendering; publication must still avoid requiring a manual frontend rebuild. The current MVP intentionally keeps that complexity out.

@@ -51,19 +51,24 @@ public final class Editorial {
     public void publish(String id) {
         Validation.id(id);
         try(var guard=store.lock()) {
-            var old=required(id); Article a=old.value();
-            if(a.status()==Status.PUBLISHED) return; // safe to retry after a lost response
-            if(a.status()!=Status.REVIEWED || a.reviewedAt()==null || a.reviewer()==null || !a.factCheckPassed()) throw new IllegalStateException("Human approval required");
-            String content=store.blob("articles",a.blobPath());
-            if(!approvalHash(a,content).equals(a.approvedHash())) throw new IllegalStateException("Article changed after approval");
-            if(!a.aiModel().equals("mock-offline-synthetic") && a.title().contains("[SYNTHETIC]")) throw new IllegalStateException("Synthetic article must remain local");
-            // Published bytes are private and unreachable until the three-row Table transaction commits.
-            Instant now=clock.instant();
-            String date=DateTimeFormatter.ofPattern("yyyy/MM").withZone(ZoneOffset.UTC).format(now);
-            String path="published/"+date+"/"+a.id()+".md";
-            guard.check(); store.putBlob("articles",path,content);
-            guard.check(); store.publish(a.state(Status.PUBLISHED,a.reviewedAt(),a.reviewer(),a.approvedHash(),now,path),old.version());
+            publish(id,guard);
         }
+    }
+    // Pipeline already owns the renewable global lease; do not acquire it a second time.
+    void publish(String id,Store.Guard guard) {
+        Validation.id(id);
+        var old=required(id); Article a=old.value();
+        if(a.status()==Status.PUBLISHED) return; // safe to retry after a lost response
+        if(a.status()!=Status.REVIEWED || a.reviewedAt()==null || a.reviewer()==null || !a.factCheckPassed()) throw new IllegalStateException("Editorial approval required");
+        String content=store.blob("articles",a.blobPath());
+        if(!approvalHash(a,content).equals(a.approvedHash())) throw new IllegalStateException("Article changed after approval");
+        if(!a.aiModel().equals("mock-offline-synthetic") && a.title().contains("[SYNTHETIC]")) throw new IllegalStateException("Synthetic article must remain local");
+        // Published bytes are private and unreachable until the three-row Table transaction commits.
+        Instant now=clock.instant();
+        String date=DateTimeFormatter.ofPattern("yyyy/MM").withZone(ZoneOffset.UTC).format(now);
+        String path="published/"+date+"/"+a.id()+".md";
+        guard.check(); store.putBlob("articles",path,content);
+        guard.check(); store.publish(a.state(Status.PUBLISHED,a.reviewedAt(),a.reviewer(),a.approvedHash(),now,path),old.version());
     }
     static String approvalHash(Article a,String markdown) {
         return Normalize.hash(Json.write(List.of(a.title(),a.perex(),a.category(),a.sourceUrls(),a.claims(),a.aiModel(),markdown)));

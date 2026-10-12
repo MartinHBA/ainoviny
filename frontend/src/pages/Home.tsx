@@ -25,6 +25,6 @@ export function Home() {
     <section className="latest-section" aria-labelledby="latest-title"><div className="section-line"><h2 id="latest-title">Najnovšie články</h2><Link to="/archiv">Celý archív ↗</Link></div>
       {other.length ? <div className="latest-stories">{other.map(a => <Story article={a} key={a.id} />)}</div> : <p className="quiet-note">{featured ? 'Všetky najnovšie články nájdete v rannom vydaní vyššie.' : 'Po prvom schválenom vydaní tu nájdete najnovšie texty.'}</p>}
     </section>
-    <div className="principles"><div><span>01</span><h3>Pôvodný zdroj</h3><p>Ku každému článku pripojíme podklady, z ktorých vychádzame.</p></div><div><span>02</span><h3>Jasné súvislosti</h3><p>Oddeľujeme tvrdenia inštitúcií od toho, čo dokumenty dokladajú.</p></div><div><span>03</span><h3>Ľudský úsudok</h3><p>AI pomáha s prípravou. O zverejnení rozhoduje redaktor.</p></div></div>
+    <div className="principles"><div><span>01</span><h3>Pôvodný zdroj</h3><p>Ku každému článku pripojíme podklady, z ktorých vychádzame.</p></div><div><span>02</span><h3>Jasné súvislosti</h3><p>Oddeľujeme tvrdenia inštitúcií od toho, čo dokumenty dokladajú.</p></div><div><span>03</span><h3>Samostatná kontrola</h3><p>AI editor porovnáva text so zdrojmi a rozhoduje o zverejnení.</p></div></div>
   </>;
 }

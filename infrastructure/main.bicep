@@ -11,6 +11,9 @@ param openAiResourceGroup string = resourceGroup().name
 param openAiSubscriptionId string = subscription().subscriptionId
 param openAiEndpoint string
 param openAiDeployment string = 'gpt-4.1-mini'
+@description('Existing stronger model deployment in the same OpenAI account; provision it separately before enabling automatic publication.')
+param openAiEditorDeployment string = 'gpt-4.1'
+param autoPublishEnabled bool = false
 @description('Production requires azure. mock is strictly for offline development.')
 @allowed(['azure'])
 param aiMode string = 'azure'
@@ -28,11 +31,13 @@ param maxArticlesPerDay int = 3
 param maxPressReleasesPerRun int = 20
 @maxValue(100)
 @minValue(0)
-param maxAiCallsPerDay int = 12
+param maxAiCallsPerDay int = 16
 param maxTokensPerArticle int = 2200
 param aiRequestTimeout int = 45
 param aiInputUsdPerMillion string = '0'
 param aiOutputUsdPerMillion string = '0'
+param editorInputUsdPerMillion string = '0'
+param editorOutputUsdPerMillion string = '0'
 param dailySchedule string = '0 0 3 * * *'
 
 var suffix = uniqueString(resourceGroup().id, namePrefix)
@@ -107,7 +112,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
     serverFarmId: plan.id
     httpsOnly: true
     siteConfig: {
-      javaVersion: '21.0'
+      javaVersion: '21'
       ftpsState: 'Disabled'
       minTlsVersion: '1.2'
       cors: { allowedOrigins: ['https://${staticApp.properties.defaultHostname}'], supportCredentials: false }
@@ -122,6 +127,8 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'AI_MODE', value: aiMode }
         { name: 'AZURE_OPENAI_ENDPOINT', value: openAiEndpoint }
         { name: 'AZURE_OPENAI_DEPLOYMENT', value: openAiDeployment }
+        { name: 'AZURE_OPENAI_EDITOR_DEPLOYMENT', value: openAiEditorDeployment }
+        { name: 'AUTO_PUBLISH_ENABLED', value: string(autoPublishEnabled) }
         { name: 'DAILY_SCHEDULE', value: dailySchedule }
         { name: 'MAX_ARTICLES_PER_DAY', value: string(maxArticlesPerDay) }
         { name: 'MAX_PRESS_RELEASES_PER_RUN', value: string(maxPressReleasesPerRun) }
@@ -130,6 +137,8 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'AI_REQUEST_TIMEOUT', value: string(aiRequestTimeout) }
         { name: 'AI_INPUT_USD_PER_MILLION', value: aiInputUsdPerMillion }
         { name: 'AI_OUTPUT_USD_PER_MILLION', value: aiOutputUsdPerMillion }
+        { name: 'EDITOR_INPUT_USD_PER_MILLION', value: editorInputUsdPerMillion }
+        { name: 'EDITOR_OUTPUT_USD_PER_MILLION', value: editorOutputUsdPerMillion }
         { name: 'ALLOWED_ORIGIN', value: 'https://${staticApp.properties.defaultHostname}' }
         { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: createApplicationInsights ? insights!.properties.ConnectionString : applicationInsightsConnectionString }
       ]

@@ -44,6 +44,11 @@ public final class Validation {
         boolean sensitive = ai.sensitive() || Pattern.compile("korup|trestn|podvod|sprenever|zneuž|obvin|pochyben|nezákonn", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE).matcher(article).find();
         return new Verification(ai.passed() && issues.isEmpty(), sensitive, issues.stream().distinct().toList());
     }
+    public static void editorDecision(EditorDecision d) {
+        if(d==null || d.issues()==null || d.issues().size()>50 || d.issues().stream().anyMatch(s -> !length(s,1,3000)) || !length(d.reason(),10,3000))
+            throw new IllegalArgumentException("Invalid chief editor decision");
+        if(d.approved() && (d.sensitive() || !d.issues().isEmpty())) throw new IllegalArgumentException("Contradictory chief editor approval");
+    }
     private static String plain(String value) { return Normalize.text(value.replaceAll("[*_`]+", "")); }
     private static boolean length(String value, int min, int max) { return value != null && value.strip().length() >= min && value.length() <= max; }
     public static void id(String value) { if (value == null || !value.matches("[a-f0-9]{64}")) throw new IllegalArgumentException("Invalid article id"); }

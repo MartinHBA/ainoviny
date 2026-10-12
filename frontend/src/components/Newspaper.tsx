@@ -23,7 +23,7 @@ export function Header() {
 export function Footer() {
   return <footer className="newspaper-footer">
     <div><Link to="/" className="footer-brand">Verejný dohľad</Link><p>O verejných veciach. Zrozumiteľne.</p></div>
-    <div className="footer-note"><p>Pracujeme s oficiálnymi zdrojmi. Články pripravujeme s pomocou AI a zverejňujeme po ľudskej redakčnej kontrole.</p><Link to="/o-novinach">Ako pracujeme ↗</Link></div>
+    <div className="footer-note"><p>Pracujeme s oficiálnymi zdrojmi. Články pripravuje AI a pred automatickým zverejnením ich kontroluje samostatný AI editor.</p><Link to="/o-novinach">Ako pracujeme ↗</Link></div>
     <div className="footer-bottom"><span>© {new Date().getFullYear()} Verejný dohľad</span><span>Fakty potrebujú kontext.</span></div>
   </footer>;
 }
@@ -40,7 +40,7 @@ export function Empty({ archive = false }: { archive?: boolean }) {
     <div className="empty-number" aria-hidden="true">V.</div>
     <span className="eyebrow">{archive ? 'Archív novín' : 'Pred prvým vydaním'}</span>
     <h1>{archive ? 'Tu bude história verejných rozhodnutí.' : 'Dobré noviny začínajú\npoctivým čítaním.'}</h1>
-    <p>{archive ? 'V tejto rubrike zatiaľ nie sú zverejnené články. Každý schválený text tu nájde svoje miesto.' : 'Naše prvé vydanie sa pripravuje. Sledujeme oficiálne zdroje, hľadáme podstatné súvislosti a každý článok pred zverejnením kontroluje redaktor.'}</p>
+    <p>{archive ? 'V tejto rubrike zatiaľ nie sú zverejnené články. Každý schválený text tu nájde svoje miesto.' : 'Naše prvé vydanie sa pripravuje. Sledujeme oficiálne zdroje, hľadáme podstatné súvislosti a každý článok pred zverejnením kontroluje samostatný AI editor.'}</p>
     <span className="empty-footnote">Zverejníme iba to, čo si zaslúži vašu pozornosť.</span>
   </section>;
 }

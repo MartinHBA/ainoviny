@@ -1,0 +1,1 @@
+{"type":"object","properties":{"approved":{"type":"boolean"},"sensitive":{"type":"boolean"},"issues":{"type":"array","items":{"type":"string"}},"reason":{"type":"string"}},"required":["approved","sensitive","issues","reason"],"additionalProperties":false}

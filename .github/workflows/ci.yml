@@ -47,3 +47,4 @@ jobs:
       - uses: actions/checkout@v4
       - run: az bicep build --file infrastructure/main.bicep --outfile /tmp/main.json
       - run: az bicep build --file infrastructure/openai.bicep --outfile /tmp/openai.json
+      - run: az bicep build --file infrastructure/editor-model.bicep --outfile /tmp/editor-model.json

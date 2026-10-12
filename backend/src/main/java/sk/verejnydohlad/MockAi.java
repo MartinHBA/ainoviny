@@ -20,5 +20,10 @@ public final class MockAi implements Ai {
         return new Draft(title, perex, "Slovensko", body, List.of(new Claim(title,s.id(),evidence),new Claim(perex,s.id(),evidence),new Claim(body,s.id(),evidence)));
     }
     public Verification verify(Draft d, List<Release> sources) { return new Verification(true,false,List.of()); }
+    public EditorDecision review(Draft d, List<Release> sources) {
+        if (sources.stream().anyMatch(s -> !s.title().startsWith("[SYNTHETIC]"))) throw new IllegalArgumentException("Mock editor accepts synthetic fixtures only");
+        return new EditorDecision(true,false,List.of(),"Marked synthetic fixture approved for local testing only.");
+    }
+    public String editorModel() { return "mock-offline-editor"; }
     public String model() { return "mock-offline-synthetic"; }
 }

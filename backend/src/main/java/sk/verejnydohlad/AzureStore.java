@@ -191,7 +191,13 @@ public final class AzureStore implements Store {
         return changeBudget(date, b -> { if (b.articleIds().contains(id)) return b; if (b.articleIds().size() >= max) return null;
             var ids = new ArrayList<>(b.articleIds()); ids.add(id); return new Budget(b.calls(), ids); });
     }
-    public void sourceChecked(Source s, Instant at) { sources.updateEntity(new TableEntity("registry", s.sourceId()).addProperty("lastCheckedAt", at.toString()), TableEntityUpdateMode.MERGE); }
+    public void sourceChecked(Source s, Instant at) {
+        // Provisioned tables can be empty: a timer must not require a human CLI init before its first run.
+        sources.upsertEntityWithResponse(new TableEntity("registry",s.sourceId()).addProperty("payload",Json.write(s))
+            .addProperty("sourceId",s.sourceId()).addProperty("name",s.name()).addProperty("baseUrl",s.baseUrl())
+            .addProperty("feedUrl",s.feedUrl()).addProperty("sourceType",s.sourceType()).addProperty("enabled",s.enabled())
+            .addProperty("lastCheckedAt",at.toString()),TableEntityUpdateMode.MERGE,Duration.ofSeconds(20),null);
+    }
     public void run(RunResult r) { sources.createEntity(new TableEntity("ops", "run|" + r.startedAt() + "|" + UUID.randomUUID()).addProperty("payload", Json.write(r))); }
     private static PagedIterable<TableEntity> query(TableClient t, String filter, int pageSize) {
         return t.listEntities(new ListEntitiesOptions().setFilter(filter).setTop(pageSize), Duration.ofSeconds(30), null);

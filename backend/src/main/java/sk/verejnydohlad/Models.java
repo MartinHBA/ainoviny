@@ -12,7 +12,10 @@ public final class Models {
     public record Analysis(int score, String topicKey, String category, String reason) {}
     public record Claim(String text, String sourceId, String evidence) {}
     public record Draft(String title, String perex, String category, String markdown, List<Claim> claims) {}
+    public record GenerationClaim(String text, String sourceId, String evidenceId) {}
+    public record Generation(GenerationClaim title, GenerationClaim perex, String category, List<GenerationClaim> paragraphs) {}
     public record Verification(boolean passed, boolean sensitive, List<String> issues) {}
+    public record EditorDecision(boolean approved, boolean sensitive, List<String> issues, String reason) {}
     public record Article(String id, String slug, String title, String perex, String category, Instant createdAt,
                           Instant generatedAt, Instant publishedAt, Status status, String blobPath,
                           List<String> sourceIds, List<String> sourceUrls, String aiModel,
@@ -38,6 +41,6 @@ public final class Models {
                          String markdown, List<String> originalSources, String aiDisclosure) {}
     public record Edition(String date, Summary featured, List<Summary> articles) {}
     public record Budget(int calls, List<String> articleIds) {}
-    public record RunResult(Instant startedAt, Instant completedAt, int collected, int drafts, List<String> errors) {}
+    public record RunResult(Instant startedAt, Instant completedAt, int collected, int drafts, int published, int rejected, List<String> errors) {}
     private Models() {}
 }
