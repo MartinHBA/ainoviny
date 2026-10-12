@@ -1,0 +1,21 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "java",
+    "APP_STORAGE_CONNECTION_STRING": "UseDevelopmentStorage=true",
+    "AI_MODE": "mock",
+    "AZURE_OPENAI_ENDPOINT": "",
+    "AZURE_OPENAI_DEPLOYMENT": "gpt-4.1-mini",
+    "AZURE_OPENAI_API_KEY": "",
+    "DAILY_SCHEDULE": "0 0 3 * * *",
+    "MAX_ARTICLES_PER_DAY": "3",
+    "MAX_PRESS_RELEASES_PER_RUN": "20",
+    "MAX_AI_CALLS_PER_DAY": "12",
+    "MAX_TOKENS_PER_ARTICLE": "2200",
+    "AI_REQUEST_TIMEOUT": "45",
+    "MIN_NEWS_SCORE": "65",
+    "ALLOWED_ORIGIN": "http://localhost:5173"
+  },
+  "Host": {"CORS": "http://localhost:5173", "CORSCredentials": false}
+}

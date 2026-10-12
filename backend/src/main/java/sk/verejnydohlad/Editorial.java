@@ -1,0 +1,74 @@
+package sk.verejnydohlad;
+
+import java.time.*;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+import sk.verejnydohlad.Models.*;
+
+public final class Editorial {
+    private final Store store; private final Clock clock;
+    public Editorial(Store store,Clock clock) { this.store=store; this.clock=clock; }
+    public void edit(String id,Draft draft) {
+        Validation.id(id); Validation.draft(draft);
+        try(var guard=store.lock()) {
+            var old=required(id); editable(old.value());
+            String hash=Normalize.hash(draft.markdown()), path="drafts/"+id+"/"+hash+".md";
+            guard.check(); store.putBlob("articles",path,draft.markdown());
+            var deterministic=Validation.grounded(draft,old.value().sourceIds().stream().map(store::release).toList(),new Verification(false,false,List.of("Edited content needs a new AI verification pass.")));
+            guard.check(); store.updateArticle(old.value().revise(draft,path,hash,deterministic,clock.instant()),old.version());
+        }
+    }
+    public void recheck(String id,Ai ai,Config config) {
+        Validation.id(id);
+        try(var guard=store.lock()) {
+            var old=required(id); Article a=old.value(); editable(a);
+            Draft d=new Draft(a.title(),a.perex(),a.category(),store.blob("articles",a.blobPath()),a.claims());
+            List<Release> sources=a.sourceIds().stream().map(store::release).toList();
+            String day=clock.instant().atZone(ZoneId.of("Europe/Bratislava")).toLocalDate().toString();
+            if(!store.reserveCall(day,config.maxCalls())) throw new IllegalStateException("Daily AI call budget reached");
+            var verification=Validation.grounded(d,sources,ai.verify(d,sources));
+            guard.check(); store.updateArticle(a.revise(d,a.blobPath(),Normalize.hash(d.markdown()),verification,clock.instant()),old.version());
+        }
+    }
+    public void approve(String id,String reviewer,boolean sensitiveAcknowledged) {
+        Validation.id(id); reviewer(reviewer);
+        try(var guard=store.lock()) {
+            var old=required(id); Article a=old.value();
+            if(a.status()!=Status.DRAFT || !a.phase().equals("COMPLETE") || !a.factCheckPassed()) throw new IllegalStateException("Only a completed, grounded DRAFT can be approved");
+            if(a.sensitive() && !sensitiveAcknowledged) throw new IllegalStateException("Sensitive claims require explicit --ack-sensitive human review");
+            String content=store.blob("articles",a.blobPath());
+            if(!Normalize.hash(content).equals(a.contentHash())) throw new IllegalStateException("Content changed after verification");
+            guard.check(); store.updateArticle(a.state(Status.REVIEWED,clock.instant(),reviewer,approvalHash(a,content),null,a.blobPath()),old.version());
+        }
+    }
+    public void reject(String id,String reviewer) {
+        Validation.id(id); reviewer(reviewer);
+        try(var guard=store.lock()) {
+            var old=required(id); if(old.value().status()==Status.PUBLISHED || old.value().status()==Status.REJECTED) throw new IllegalStateException("Article cannot be rejected");
+            guard.check(); store.updateArticle(old.value().state(Status.REJECTED,clock.instant(),reviewer,null,null,old.value().blobPath()),old.version());
+        }
+    }
+    public void publish(String id) {
+        Validation.id(id);
+        try(var guard=store.lock()) {
+            var old=required(id); Article a=old.value();
+            if(a.status()==Status.PUBLISHED) return; // safe to retry after a lost response
+            if(a.status()!=Status.REVIEWED || a.reviewedAt()==null || a.reviewer()==null || !a.factCheckPassed()) throw new IllegalStateException("Human approval required");
+            String content=store.blob("articles",a.blobPath());
+            if(!approvalHash(a,content).equals(a.approvedHash())) throw new IllegalStateException("Article changed after approval");
+            if(!a.aiModel().equals("mock-offline-synthetic") && a.title().contains("[SYNTHETIC]")) throw new IllegalStateException("Synthetic article must remain local");
+            // Published bytes are private and unreachable until the three-row Table transaction commits.
+            Instant now=clock.instant();
+            String date=DateTimeFormatter.ofPattern("yyyy/MM").withZone(ZoneOffset.UTC).format(now);
+            String path="published/"+date+"/"+a.id()+".md";
+            guard.check(); store.putBlob("articles",path,content);
+            guard.check(); store.publish(a.state(Status.PUBLISHED,a.reviewedAt(),a.reviewer(),a.approvedHash(),now,path),old.version());
+        }
+    }
+    static String approvalHash(Article a,String markdown) {
+        return Normalize.hash(Json.write(List.of(a.title(),a.perex(),a.category(),a.sourceUrls(),a.claims(),a.aiModel(),markdown)));
+    }
+    private Store.Versioned<Article> required(String id) { var a=store.article(id); if(a==null) throw new IllegalArgumentException("Article not found"); return a; }
+    private static void editable(Article a) { if(a.status()==Status.PUBLISHED || a.status()==Status.REJECTED || !a.phase().equals("COMPLETE")) throw new IllegalStateException("Article is not editable"); }
+    private static void reviewer(String name) { if(name==null || !name.matches("[\\p{L}\\p{N}@._ +'-]{3,120}")) throw new IllegalArgumentException("Named human reviewer required"); }
+}

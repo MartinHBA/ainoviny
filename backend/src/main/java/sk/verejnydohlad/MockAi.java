@@ -1,0 +1,24 @@
+package sk.verejnydohlad;
+
+import java.util.*;
+import sk.verejnydohlad.Models.*;
+
+/** Deliberately scores real sources zero. Offline synthetic fixtures require an explicit marker. */
+public final class MockAi implements Ai {
+    public Map<String,Analysis> analyze(List<Release> sources) {
+        var result = new HashMap<String,Analysis>();
+        for (Release s : sources) result.put(s.id(), new Analysis(s.title().startsWith("[SYNTHETIC]") ? 80 : 0, "offline-"+s.id().substring(0,12), "Slovensko", "Offline model; only marked synthetic fixtures are eligible."));
+        return result;
+    }
+    public Draft generate(List<Release> sources) {
+        Release s = sources.getFirst();
+        if (!s.title().startsWith("[SYNTHETIC]")) throw new IllegalArgumentException("Mock AI only accepts synthetic fixtures");
+        String title = "[SYNTHETIC] Testovacia správa pre lokálny vývoj";
+        String perex = "Podľa syntetického testovacieho podkladu ide o skúšobnú informáciu určenú výlučne na overenie systému.";
+        String body = "Syntetická testovacia organizácia uvádza skúšobnú informáciu. Tento článok je označená testovacia pomôcka pre lokálny vývoj.";
+        String evidence = s.body();
+        return new Draft(title, perex, "Slovensko", body, List.of(new Claim(title,s.id(),evidence),new Claim(perex,s.id(),evidence),new Claim(body,s.id(),evidence)));
+    }
+    public Verification verify(Draft d, List<Release> sources) { return new Verification(true,false,List.of()); }
+    public String model() { return "mock-offline-synthetic"; }
+}

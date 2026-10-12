@@ -1,0 +1,15 @@
+{
+  "name": "verejny-dohlad-workspace",
+  "private": true,
+  "scripts": {
+    "storage": "azurite --silent --location .local/azurite --debug .local/azurite.log",
+    "frontend": "npm --prefix frontend run dev",
+    "test:e2e": "playwright test",
+    "test:storage": "mvn -f backend/pom.xml -Dtest=AzureStoreIT -Dstorage.integration=true test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.1",
+    "azurite": "^3.35.0"
+  },
+  "overrides": { "uuid": "^11.1.1" }
+}

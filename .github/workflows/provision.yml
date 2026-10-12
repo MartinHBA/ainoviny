@@ -1,0 +1,38 @@
+name: Provision explicitly approved Azure infrastructure
+on:
+  workflow_dispatch:
+    inputs:
+      approve_paid_resources:
+        description: 'I approve potential Azure costs and provisioning from this template'
+        required: true
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  provision:
+    if: inputs.approve_paid_resources
+    environment: azure-production
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Provision against existing OpenAI and monitoring resources
+        run: >-
+          az deployment group create --resource-group "$RESOURCE_GROUP"
+          --template-file infrastructure/main.bicep
+          --parameters openAiResourceName="$OPENAI_NAME" openAiResourceGroup="$OPENAI_GROUP"
+          openAiEndpoint="$OPENAI_ENDPOINT" openAiDeployment="$OPENAI_DEPLOYMENT"
+          applicationInsightsConnectionString="$INSIGHTS_CONNECTION"
+        env:
+          RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          OPENAI_NAME: ${{ vars.AZURE_OPENAI_RESOURCE_NAME }}
+          OPENAI_GROUP: ${{ vars.AZURE_OPENAI_RESOURCE_GROUP }}
+          OPENAI_ENDPOINT: ${{ vars.AZURE_OPENAI_ENDPOINT }}
+          OPENAI_DEPLOYMENT: ${{ vars.AZURE_OPENAI_DEPLOYMENT }}
+          INSIGHTS_CONNECTION: ${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING }}

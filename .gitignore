@@ -1,0 +1,16 @@
+**/target/
+**/node_modules/
+**/dist/
+**/coverage/
+**/test-results/
+**/playwright-report/
+.tools/
+.local/
+backend/local.settings.json
+**/.env
+**/.env.local
+*.log
+*.tmp
+*.tsbuildinfo
+.DS_Store
+editorial-export/

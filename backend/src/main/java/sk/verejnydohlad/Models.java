@@ -1,0 +1,43 @@
+package sk.verejnydohlad;
+
+import java.time.Instant;
+import java.util.List;
+
+public final class Models {
+    public enum Status { DRAFT, REVIEWED, PUBLISHED, REJECTED }
+    public record Source(String sourceId, String name, String baseUrl, String feedUrl, String sourceType,
+                         boolean enabled, String notes, String bodySelector, List<String> allowedHosts) {}
+    public record Release(String id, String sourceId, String organization, String originalUrl, Instant publishedAt,
+                          Instant collectedAt, String title, String body, String contentHash, String blobPath) {}
+    public record Analysis(int score, String topicKey, String category, String reason) {}
+    public record Claim(String text, String sourceId, String evidence) {}
+    public record Draft(String title, String perex, String category, String markdown, List<Claim> claims) {}
+    public record Verification(boolean passed, boolean sensitive, List<String> issues) {}
+    public record Article(String id, String slug, String title, String perex, String category, Instant createdAt,
+                          Instant generatedAt, Instant publishedAt, Status status, String blobPath,
+                          List<String> sourceIds, List<String> sourceUrls, String aiModel,
+                          Instant reviewedAt, String reviewer, String approvedHash,
+                          String contentHash, boolean factCheckPassed, boolean sensitive,
+                          List<String> issues, List<Claim> claims, String phase, int editorialOrder, String editionDate) {
+        public Article revise(Draft d, String path, String hash, Verification v, Instant now) {
+            return new Article(id, slug, d.title(), d.perex(), d.category(), createdAt, now, null, Status.DRAFT,
+                path, sourceIds, sourceUrls, aiModel, null, null, null, hash, v.passed(), v.sensitive(),
+                v.issues(), d.claims(), "COMPLETE", editorialOrder, editionDate);
+        }
+        public Article state(Status next, Instant reviewed, String who, String approval, Instant published, String path) {
+            return new Article(id, slug, title, perex, category, createdAt, generatedAt, published, next, path,
+                sourceIds, sourceUrls, aiModel, reviewed, who, approval, contentHash, factCheckPassed, sensitive,
+                issues, claims, phase, editorialOrder, editionDate);
+        }
+    }
+    public record Summary(String id, String slug, String title, String perex, String category, Instant publishedAt) {
+        public static Summary of(Article a) { return new Summary(a.id(), a.slug(), a.title(), a.perex(), a.category(), a.publishedAt()); }
+    }
+    public record Page(List<Summary> articles, String nextCursor) {}
+    public record Detail(String id, String slug, String headline, String perex, String category, Instant publishedAt,
+                         String markdown, List<String> originalSources, String aiDisclosure) {}
+    public record Edition(String date, Summary featured, List<Summary> articles) {}
+    public record Budget(int calls, List<String> articleIds) {}
+    public record RunResult(Instant startedAt, Instant completedAt, int collected, int drafts, List<String> errors) {}
+    private Models() {}
+}

@@ -1,0 +1,44 @@
+name: Deploy approved release
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_deployment:
+        description: 'I approve deployment to the existing Azure resources'
+        type: boolean
+        required: true
+        default: false
+permissions:
+  contents: read
+  id-token: write
+concurrency: {group: production-deployment, cancel-in-progress: false}
+jobs:
+  deploy:
+    if: inputs.confirm_deployment
+    environment: azure-production
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: microsoft, java-version: '21', cache: maven}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22', cache: npm, cache-dependency-path: frontend/package-lock.json}
+      - run: mvn -B -f backend/pom.xml verify
+      - run: npm ci && npm test && npm run build
+        working-directory: frontend
+        env:
+          VITE_API_BASE_URL: ${{ vars.FUNCTION_API_URL }}
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - run: cd backend/target/azure-functions/verejny-dohlad-local && zip -r "$RUNNER_TEMP/functions.zip" . -x local.settings.json
+      - run: az functionapp deployment source config-zip --resource-group "$RESOURCE_GROUP" --name "$FUNCTION_APP" --src "$RUNNER_TEMP/functions.zip"
+        env: {RESOURCE_GROUP: '${{ vars.AZURE_RESOURCE_GROUP }}', FUNCTION_APP: '${{ vars.FUNCTION_APP_NAME }}'}
+      - uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          action: upload
+          app_location: frontend/dist
+          skip_app_build: true
+          skip_api_build: true

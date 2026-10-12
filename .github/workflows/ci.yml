@@ -1,0 +1,49 @@
+name: CI
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: microsoft, java-version: '21', cache: maven}
+      - run: mvn -B -f backend/pom.xml verify
+      - uses: actions/upload-artifact@v4
+        with: {name: functions, path: backend/target/azure-functions/verejny-dohlad-local}
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22', cache: npm, cache-dependency-path: frontend/package-lock.json}
+      - run: npm ci
+        working-directory: frontend
+      - run: npm test && npm run build
+        working-directory: frontend
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: microsoft, java-version: '21', cache: maven}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22', cache: npm}
+      - run: npm ci
+      - run: npm --prefix frontend ci
+      - run: npx playwright install --with-deps chromium
+      - run: npx azurite --silent --location .local/azurite > /tmp/azurite.log 2>&1 &
+      - run: mvn -B -f backend/pom.xml -Dtest=AzureStoreIT -Dstorage.integration=true test
+      - run: npx playwright test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with: {name: browser-failures, path: test-results/}
+  infrastructure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: az bicep build --file infrastructure/main.bicep --outfile /tmp/main.json
+      - run: az bicep build --file infrastructure/openai.bicep --outfile /tmp/openai.json
