@@ -45,9 +45,11 @@ public final class Validation {
         return new Verification(ai.passed() && issues.isEmpty(), sensitive, issues.stream().distinct().toList());
     }
     public static void editorDecision(EditorDecision d) {
-        if(d==null || d.issues()==null || d.issues().size()>50 || d.issues().stream().anyMatch(s -> !length(s,1,3000)) || !length(d.reason(),10,3000))
+        if(d==null || d.issues()==null || d.issues().size()>50 || d.issues().stream().anyMatch(s -> !length(s,1,3000)))
             throw new IllegalArgumentException("Invalid chief editor decision");
         if(d.approved() && (d.sensitive() || !d.issues().isEmpty())) throw new IllegalArgumentException("Contradictory chief editor approval");
+        // An explicit clean approval can legitimately have no explanatory prose. Rejections need a reason.
+        if(!length(d.reason(),d.approved()?0:1,3000)) throw new IllegalArgumentException("Invalid chief editor reason");
     }
     private static String plain(String value) { return Normalize.text(value.replaceAll("[*_`]+", "")); }
     private static boolean length(String value, int min, int max) { return value != null && value.strip().length() >= min && value.length() <= max; }

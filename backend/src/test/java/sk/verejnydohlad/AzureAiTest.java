@@ -39,6 +39,18 @@ class AzureAiTest {
             http.payload=payload;assertThrows(IllegalArgumentException.class,() -> ai.review(d,List.of(r)));
         }
     }
+    @Test void cleanApprovalsAcceptEmptyOrShortReasonsButRejectionsRequireAnExplanation() {
+        var http=new OfflineHttp();var ai=new AzureAi(config(),http);var r=Fixtures.release("concise-approval");var d=new MockAi().generate(List.of(r));
+        for(String reason:List.of("","OK")) {
+            http.payload=response(Json.write(new EditorDecision(true,false,List.of(),reason)),"stop",null);
+            assertTrue(ai.review(d,List.of(r)).approved());
+        }
+        for(var decision:List.of(new EditorDecision(false,false,List.of(),""),new EditorDecision(true,true,List.of(),""),
+            new EditorDecision(true,false,List.of("Unsupported claim."),""))) {
+            http.payload=response(Json.write(decision),"stop",null);
+            assertThrows(IllegalArgumentException.class,() -> ai.review(d,List.of(r)));
+        }
+    }
     @Test void finalEditorReceivesFullOriginalAndOversizedInputsFailBeforeHttp() {
         var http=new OfflineHttp();var ai=new AzureAi(config(),http);var r=Fixtures.release("full-original");
         String body=r.body()+"x".repeat(11000)+" A caveat at the end of the full original.";

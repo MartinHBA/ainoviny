@@ -2,10 +2,13 @@ package sk.verejnydohlad;
 
 import java.time.*;
 import java.util.*;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import sk.verejnydohlad.Models.*;
 
 /** One bounded chief-editor call per content/source revision. No tools or autonomous retry loop. */
 public final class AutomaticEditor {
+    private static final Logger LOG=Logger.getLogger(AutomaticEditor.class.getName());
     static final String REVIEWER_PREFIX="AI editor: ", POLICY_VERSION="chief-editor-v1";
     public record Audit(String inputHash,String model,String policyVersion,Instant reviewedAt,EditorDecision decision) {}
     public record Result(int published,int rejected) {}
@@ -68,7 +71,10 @@ public final class AutomaticEditor {
                 } else if(!approvalHash.equals(a.approvedHash()) || !a.reviewer().equals(REVIEWER_PREFIX+model))
                     throw new IllegalStateException("Automatic approval no longer matches article");
                 new Editorial(store,clock).publish(a.id(),guard); published++;
-            } catch(Exception e) { errors.add("editor "+candidate.id()+": "+e.getClass().getSimpleName()); }
+            } catch(Exception e) {
+                LOG.log(Level.WARNING,"Chief editor failed for article "+candidate.id(),e);
+                errors.add("editor "+candidate.id()+": "+e.getClass().getSimpleName());
+            }
         }
         return new Result(published,rejected);
     }

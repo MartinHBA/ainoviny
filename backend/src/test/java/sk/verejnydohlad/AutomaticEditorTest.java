@@ -66,6 +66,15 @@ class AutomaticEditorTest {
         store.failPublish=false;assertEquals(1,pipeline.run(false).published());assertEquals(1,ai.reviews);
         assertEquals(4,store.budget("2026-10-12").calls());
     }
+    @Test void emptyApprovalReasonIsAuditedAndPublicationRetryDoesNotSpendAnotherCall() {
+        var store=input();var ai=new EditorAi();ai.decision=new EditorDecision(true,false,List.of(),"");
+        store.failPublish=true;var pipeline=pipeline(store,ai);
+        assertEquals(0,pipeline.run(false).published());assertEquals(Status.REVIEWED,store.editorial().getFirst().status());
+        var audit=store.blobs.entrySet().stream().filter(e -> e.getKey().startsWith("articles/reviews/")).findFirst().orElseThrow();
+        assertEquals("",Json.read(audit.getValue(),AutomaticEditor.Audit.class).decision().reason());
+        store.failPublish=false;assertEquals(1,pipeline.run(false).published());assertEquals(1,ai.reviews);
+        assertEquals(4,store.budget("2026-10-12").calls());
+    }
     @Test void crashAfterAuditBeforeApprovalAlsoResumesWithoutAnotherAiCall() {
         var store=new MemoryStore(){boolean failOnce=true;@Override public void updateArticle(Article a,String version){
             if(failOnce && a.status()==Status.REVIEWED){failOnce=false;throw new IllegalStateException("simulated crash");}super.updateArticle(a,version);
