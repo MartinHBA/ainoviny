@@ -94,6 +94,16 @@ public final class AzureStore implements Store {
         }
         result.sort(Comparator.comparing(Release::publishedAt).reversed()); return result;
     }
+    public List<Release> recent(Instant since,int limit) {
+        var result=new ArrayList<Release>();
+        String filter="PartitionKey eq 'press' and RowKey ge 'url|' and RowKey lt 'url}' and publishedAt ge '"+since+"'";
+        for(var entity:query(releases,filter,limit)) {
+            var metadata=Json.read((String)entity.getProperty("payload"),Release.class);
+            result.add(Json.read(blob("sources",metadata.blobPath()),Release.class));
+            if(result.size()==limit) break;
+        }
+        result.sort(Comparator.comparing(Release::publishedAt).reversed());return result;
+    }
     public Release release(String id) {
         var e = get(releases, PRESS, "url|" + id);
         if (e == null) throw new IllegalArgumentException("Source material not found");
@@ -163,7 +173,7 @@ public final class AzureStore implements Store {
         if (!first.hasNext()) return new Edition(null, null, List.of());
         Article latest = Json.read((String)first.next().getProperty("payload"), Article.class);
         var edition = new ArrayList<Article>();
-        for (var e : query(articles, "PartitionKey eq 'editorial' and RowKey ge 'pub|' and RowKey lt 'pub}' and status eq 'PUBLISHED' and editionDate eq '" + latest.editionDate() + "'", 3)) {
+        for (var e : query(articles, "PartitionKey eq 'editorial' and RowKey ge 'pub|' and RowKey lt 'pub}' and status eq 'PUBLISHED' and editionDate eq '" + latest.editionDate() + "'", 5)) {
             edition.add(Json.read((String)e.getProperty("payload"), Article.class));
         }
         edition.sort(Comparator.comparingInt(Article::editorialOrder));

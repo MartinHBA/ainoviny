@@ -6,8 +6,14 @@ import java.util.*;
 import sk.verejnydohlad.Models.*;
 
 public final class Editorial {
-    private final Store store; private final Clock clock;
-    public Editorial(Store store,Clock clock) { this.store=store; this.clock=clock; }
+    private final Store store; private final Clock clock; private final int maxPublished;
+    public Editorial(Store store,Clock clock) { this(store,clock,Config.environment().maxPublished()); }
+    public Editorial(Store store,Clock clock,int maxPublished) { this.store=store; this.clock=clock; this.maxPublished=maxPublished; }
+    boolean publicationLimitReached() {
+        String day=clock.instant().atZone(ZoneId.of("Europe/Bratislava")).toLocalDate().toString();
+        return store.editorial().stream().filter(a -> a.status()==Status.PUBLISHED && a.publishedAt()!=null &&
+            a.publishedAt().atZone(ZoneId.of("Europe/Bratislava")).toLocalDate().toString().equals(day)).count()>=maxPublished;
+    }
     public void edit(String id,Draft draft) {
         Validation.id(id); Validation.draft(draft);
         try(var guard=store.lock()) {
@@ -59,6 +65,7 @@ public final class Editorial {
         Validation.id(id);
         var old=required(id); Article a=old.value();
         if(a.status()==Status.PUBLISHED) return; // safe to retry after a lost response
+        if(publicationLimitReached()) throw new IllegalStateException("Daily publication limit reached");
         if(a.status()!=Status.REVIEWED || a.reviewedAt()==null || a.reviewer()==null || !a.factCheckPassed()) throw new IllegalStateException("Editorial approval required");
         String content=store.blob("articles",a.blobPath());
         if(!approvalHash(a,content).equals(a.approvedHash())) throw new IllegalStateException("Article changed after approval");
@@ -68,7 +75,8 @@ public final class Editorial {
         String date=DateTimeFormatter.ofPattern("yyyy/MM").withZone(ZoneOffset.UTC).format(now);
         String path="published/"+date+"/"+a.id()+".md";
         guard.check(); store.putBlob("articles",path,content);
-        guard.check(); store.publish(a.state(Status.PUBLISHED,a.reviewedAt(),a.reviewer(),a.approvedHash(),now,path),old.version());
+        guard.check(); store.publish(Models.withEdition(a.state(Status.PUBLISHED,a.reviewedAt(),a.reviewer(),a.approvedHash(),now,path),
+            now.atZone(ZoneId.of("Europe/Bratislava")).toLocalDate().toString()),old.version());
     }
     static String approvalHash(Article a,String markdown) {
         return Normalize.hash(Json.write(List.of(a.title(),a.perex(),a.category(),a.sourceUrls(),a.claims(),a.aiModel(),markdown)));

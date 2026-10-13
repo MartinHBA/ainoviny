@@ -15,13 +15,20 @@ class PipelineTest {
         assertEquals(3,store.budget("2026-10-12").calls());assertEquals(1,store.budget("2026-10-12").articleIds().size());
         assertEquals(0,new Pipeline(store,new MockAi(),Fixtures.config(),Fixtures.CLOCK).run(false).drafts());assertEquals(3,store.budget("2026-10-12").calls());
     }
-    @Test void meaningfulStoryQuotaNeverExceedsThree() {
-        var store=new MemoryStore();for(int i=0;i<5;i++)store.collect(Fixtures.release("fixture-"+i));
-        var result=new Pipeline(store,new MockAi(),Fixtures.config(),Fixtures.CLOCK).run(false);assertEquals(3,result.drafts());assertEquals(3,store.editorial().size());
+    @Test void meaningfulStoryQuotaNeverExceedsEight() {
+        var store=new MemoryStore();for(int i=0;i<10;i++)store.collect(Fixtures.release("fixture-"+i));
+        var result=new Pipeline(store,new MockAi(),Fixtures.config(),Fixtures.CLOCK).run(false);assertEquals(8,result.drafts());assertEquals(8,store.editorial().size());
     }
     @Test void realSourcesDoNotGenerateMockNews() {
         var store=new MemoryStore();var r=Fixtures.release("real");store.collect(new Release(r.id(),r.sourceId(),r.organization(),r.originalUrl(),r.publishedAt(),r.collectedAt(),"Real press release",r.body(),r.contentHash(),r.blobPath()));
         assertEquals(0,new Pipeline(store,new MockAi(),Fixtures.config(),Fixtures.CLOCK).run(false).drafts());assertTrue(store.editorial().isEmpty());
+    }
+    @Test void olderPendingDocumentsBecomeContextWithoutRankingOrWriting() {
+        var store=new MemoryStore();var r=Fixtures.release("old-context");
+        store.collect(new Release(r.id(),r.sourceId(),r.organization(),r.originalUrl(),r.publishedAt().minus(java.time.Duration.ofDays(30)),r.collectedAt(),r.title(),r.body(),r.contentHash(),r.blobPath()));
+        var result=new Pipeline(store,new MockAi(),Fixtures.config(),Fixtures.CLOCK).run(false);
+        assertEquals(0,result.drafts());assertEquals(0,store.budget("2026-10-12").calls());assertEquals("CONTEXT",store.statuses.get(r.id()));
+        assertEquals(1,store.recent(Fixtures.CLOCK.instant().minus(java.time.Duration.ofDays(90)),100).size());
     }
     @Test void crashesResumeVerificationWithoutGeneratingTwice() {
         var store=new MemoryStore();store.collect(Fixtures.release("resume"));var mock=new MockAi();int[] generations={0};

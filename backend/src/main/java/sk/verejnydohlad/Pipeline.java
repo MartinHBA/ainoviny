@@ -3,9 +3,12 @@ package sk.verejnydohlad;
 import java.time.*;
 import java.util.*;
 import java.util.function.Supplier;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import sk.verejnydohlad.Models.*;
 
 public final class Pipeline {
+    private static final Logger LOG=Logger.getLogger(Pipeline.class.getName());
     private final Store store; private final Ai ai; private final Config config; private final Clock clock;
     public Pipeline(Store store,Ai ai,Config config,Clock clock) { this.store=store; this.ai=ai; this.config=config; this.clock=clock; }
     public RunResult run(boolean collect) {
@@ -24,9 +27,14 @@ public final class Pipeline {
                 for(Article a:incomplete) {
                     claimed.addAll(a.sourceIds());
                     try { if(process(a,a.sourceIds().stream().map(store::release).toList(),guard,deadline)) drafts++; }
-                    catch(Exception e) { errors.add("resume "+a.id()+": "+e.getClass().getSimpleName()); }
+                    catch(Exception e) { LOG.log(Level.WARNING,"Failed to resume article "+a.id(),e);errors.add("resume "+a.id()+": "+errorDescription(e)); }
                 }
-                List<Release> candidates=store.pending(config.maxReleases()).stream().filter(s -> !claimed.contains(s.id())).toList();
+                var pending=store.pending(config.maxReleases());
+                Instant freshSince=clock.instant().minus(Duration.ofDays(7));
+                for(var source:pending) if(source.publishedAt().isBefore(freshSince)) {
+                    guard.check();store.releaseStatus(source,"CONTEXT",null);
+                }
+                List<Release> candidates=pending.stream().filter(s -> !claimed.contains(s.id()) && !s.publishedAt().isBefore(freshSince)).toList();
                 List<Release> unranked=candidates.stream().filter(s -> store.analysis(s)==null).toList();
                 // Batches keep structured-output size and cost bounded. Persist each ranking to avoid repeat calls.
                 for(int offset=0;offset<unranked.size();offset+=6) {
@@ -45,9 +53,14 @@ public final class Pipeline {
                 List<List<Release>> selected=new ArrayList<>(groups.values());
                 selected.sort(Comparator.<List<Release>>comparingInt(g -> g.stream().map(store::analysis).mapToInt(Analysis::score).max().orElse(0)).reversed()
                     .thenComparing(g -> g.getFirst().id()));
-                for(var group:selected) {
+                List<Release> archive=selected.isEmpty()?List.of():store.recent(clock.instant().minus(Duration.ofDays(90)),100);
+                Set<String> consumed=new HashSet<>();
+                for(var seedGroup:selected) {
                     if(Instant.now().isAfter(deadline)) break;
-                    String id=Normalize.hash(group.stream().map(Release::id).sorted().reduce((a,b) -> a+"|"+b).orElseThrow());
+                    var seeds=seedGroup.stream().filter(r -> !consumed.contains(r.id())).limit(6).toList();
+                    if(seeds.isEmpty()) continue;
+                    var group=Research.related(seeds,archive);
+                    String id=Normalize.hash(seeds.stream().map(Release::id).sorted().reduce((a,b) -> a+"|"+b).orElseThrow());
                     if(store.article(id)!=null) continue;
                     guard.check(); String day=day();
                     if(!store.reserveArticle(day,id,config.maxArticles())) break;
@@ -55,8 +68,9 @@ public final class Pipeline {
                         "",group.stream().map(Release::id).toList(),group.stream().map(Release::originalUrl).distinct().toList(),ai.model(),
                         null,null,null,"",false,false,List.of(),List.of(),"GENERATING",store.budget(day).articleIds().indexOf(id),day);
                     guard.check(); if(!store.createArticle(initial)) continue;
+                    group.forEach(r -> consumed.add(r.id()));
                     try { if(process(initial,group,guard,deadline)) drafts++; }
-                    catch(Exception e) { errors.add("draft "+id+": "+e.getClass().getSimpleName()); }
+                    catch(Exception e) { LOG.log(Level.WARNING,"Failed to draft article "+id,e);errors.add("draft "+id+": "+errorDescription(e)); }
                 }
             } catch(Exception e) { errors.add("pipeline: "+e.getClass().getSimpleName()); }
             // An unrelated ranking/generation failure must not strand a cached, reviewed publication.
@@ -75,14 +89,39 @@ public final class Pipeline {
         if(a.phase().equals("GENERATING")) {
             String checkpoint="drafts/"+a.id()+"/generated.json";
             String recovered=store.optionalBlob("articles",checkpoint);
-            draft=recovered==null?paid(() -> ai.generate(group),guard,deadline):Json.read(recovered,Draft.class); Validation.draft(draft);
+            ResearchBrief brief=null;
+            if(Research.multiSource(group)) {
+                String inputHash=Normalize.hash(Json.write(List.of(group,ai.editorModel(),Research.POLICY_VERSION)));
+                String researchPath="research/"+a.id()+"/"+inputHash+".json";
+                String cached=store.optionalBlob("articles",researchPath);
+                if(cached==null && recovered==null) {
+                    brief=paid(() -> ai.research(group),guard,deadline);
+                    try { Research.validate(brief,group); }
+                    catch(IllegalArgumentException invalid) {
+                        guard.check();store.putBlob("articles","research-errors/"+a.id()+"/"+UUID.randomUUID()+".json",
+                            Json.write(new Research.FailedAttempt(inputHash,ai.editorModel(),errorDescription(invalid),brief)));
+                        if(!"Ungrounded research number".equals(invalid.getMessage())) throw invalid;
+                        // Drop unsupported observations, never waive the evidence check or invent a replacement citation.
+                        brief=Research.discardUnsupportedNumbers(brief,group);
+                    }
+                    guard.check();store.putBlob("articles",researchPath,Json.write(new Research.Audit(inputHash,ai.editorModel(),Research.POLICY_VERSION,brief)));
+                } else if(cached!=null) {
+                    var audit=Json.read(cached,Research.Audit.class);
+                    if(!inputHash.equals(audit.inputHash()) || !ai.editorModel().equals(audit.model()) || !Research.POLICY_VERSION.equals(audit.policyVersion())) throw new IllegalStateException("Invalid research audit");
+                    brief=audit.brief();Research.validate(brief,group);
+                }
+            }
+            ResearchBrief research=brief;
+            draft=recovered==null?paid(() -> ai.generate(group,research),guard,deadline):Json.read(recovered,Draft.class); Validation.draft(draft);
+            Research.coverage(draft,brief,group);
             guard.check(); store.putBlob("articles",checkpoint,Json.write(draft));
             var next=new Article(a.id(),Normalize.slug(draft.title())+"-"+a.id().substring(0,12),draft.title(),draft.perex(),draft.category(),a.createdAt(),clock.instant(),null,Status.DRAFT,
-                checkpoint,a.sourceIds(),a.sourceUrls(),a.aiModel(),null,null,null,"",false,false,List.of(),draft.claims(),"VERIFYING",a.editorialOrder(),a.editionDate());
+                checkpoint,a.sourceIds(),a.sourceUrls(),a.aiModel(),null,null,null,"",false,brief!=null && brief.sensitive(),List.of(),draft.claims(),"VERIFYING",a.editorialOrder(),a.editionDate());
             guard.check(); store.updateArticle(next,stored.version()); stored=store.article(a.id()); a=stored.value();
         } else draft=Json.read(store.blob("articles",a.blobPath()),Draft.class);
         Draft finalDraft=draft;
         Verification verification=Validation.grounded(draft,group,paid(() -> ai.verify(finalDraft,group),guard,deadline));
+        if(a.sensitive()) verification=new Verification(verification.passed(),true,verification.issues());
         String hash=Normalize.hash(draft.markdown()), path="drafts/"+a.id()+"/"+hash+".md";
         guard.check(); store.putBlob("articles",path,draft.markdown());
         guard.check(); store.updateArticle(a.revise(draft,path,hash,verification,clock.instant()),stored.version());
@@ -95,4 +134,13 @@ public final class Pipeline {
         return action.get();
     }
     private String day() { return clock.instant().atZone(ZoneId.of("Europe/Bratislava")).toLocalDate().toString(); }
+    private static String errorDescription(Exception error) {
+        String message=error.getMessage();
+        // Only known fixed adapter/validation messages enter operational metadata, never arbitrary SDK data.
+        var safe=Set.of("Invalid research brief","Invalid research finding","Unknown research evidence identifier","Ungrounded research number",
+            "Analytical brief needs evidence from different institutions","Analytical draft omitted its second source","AI refusal or incomplete response",
+            "Invalid JSON for ResearchBrief","Research needs 2-6 documents from different institutions","Unknown source evidence identifier",
+            "Incomplete article generation","Invalid AI draft structure","Invalid claim map");
+        return error.getClass().getSimpleName()+(message!=null && safe.contains(message)?": "+message:"");
+    }
 }

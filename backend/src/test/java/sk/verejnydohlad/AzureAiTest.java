@@ -77,6 +77,19 @@ class AzureAiTest {
             assertThrows(IllegalArgumentException.class,() -> ai.generate(List.of(r)));
         }
     }
+    @Test void analystUsesStrongDeploymentAndWriterNeverReceivesPrivateLeads() {
+        var http=new OfflineHttp();var ai=new AzureAi(config(),http);var a=Fixtures.release("research-contract");
+        var b=ResearchTest.document("research-contract-second","second","[SYNTHETIC] Second document",a.body()+" Second document.");
+        var sources=List.of(a,b);var brief=ResearchTest.brief(sources,false);
+        http.payload=response(Json.write(brief),"stop",null);assertEquals(brief,ai.research(sources));
+        var request=Json.tree(http.requestBody());assertEquals("chief-editor",request.path("model").asText());
+        assertEquals("research",request.path("response_format").path("json_schema").path("name").asText());
+        var draft=new MockAi().generate(List.of(a));var claims=draft.claims().stream().map(c -> new GenerationClaim(c.text(),c.sourceId(),"body-0")).toList();
+        http.payload=response(Json.write(new Generation(claims.get(0),claims.get(1),draft.category(),claims.subList(2,claims.size()))),"stop",null);
+        ai.generate(sources,brief);var input=Json.tree(Json.tree(http.requestBody()).path("messages").get(1).path("content").asText());
+        assertFalse(input.path("research").has("leads"));assertEquals(2,input.path("sources").size());
+        assertFalse(http.requestBody().contains("Private unanswered question."));
+    }
     // No network or Azure credential calls; only the adapter request/response contract is exercised.
     static class OfflineHttp extends HttpClient {
         HttpRequest request;String payload;

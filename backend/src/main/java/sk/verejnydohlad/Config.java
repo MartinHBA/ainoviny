@@ -3,7 +3,7 @@ package sk.verejnydohlad;
 import java.util.Map;
 
 public record Config(String storageConnection, String accountName, String aiMode, String endpoint, String deployment,
-                     String apiKey, int maxArticles, int maxReleases, int maxCalls, int maxTokens, int aiTimeout,
+                     String apiKey, int maxArticles, int maxPublished, int maxReleases, int maxCalls, int maxTokens, int aiTimeout,
                      int minScore, String origin, double inputPrice, double outputPrice,
                      boolean autoPublish, String editorDeployment, double editorInputPrice, double editorOutputPrice) {
     public static Config environment() { return from(System.getenv()); }
@@ -11,8 +11,8 @@ public record Config(String storageConnection, String accountName, String aiMode
         var c = new Config(env.getOrDefault("APP_STORAGE_CONNECTION_STRING", ""), env.getOrDefault("STORAGE_ACCOUNT_NAME", ""),
             env.getOrDefault("AI_MODE", "mock"), env.getOrDefault("AZURE_OPENAI_ENDPOINT", ""),
             env.getOrDefault("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-mini"), env.getOrDefault("AZURE_OPENAI_API_KEY", ""),
-            number(env, "MAX_ARTICLES_PER_DAY", 3, 0, 3), number(env, "MAX_PRESS_RELEASES_PER_RUN", 20, 1, 50),
-            number(env, "MAX_AI_CALLS_PER_DAY", 16, 0, 100), number(env, "MAX_TOKENS_PER_ARTICLE", 2200, 256, 4000),
+            number(env, "MAX_ARTICLES_PER_DAY", 8, 0, 8), number(env, "MAX_PUBLISHED_ARTICLES_PER_DAY", 5, 0, 5), number(env, "MAX_PRESS_RELEASES_PER_RUN", 40, 1, 50),
+            number(env, "MAX_AI_CALLS_PER_DAY", 40, 0, 100), number(env, "MAX_TOKENS_PER_ARTICLE", 2200, 256, 4000),
             number(env, "AI_REQUEST_TIMEOUT", 45, 5, 60), number(env, "MIN_NEWS_SCORE", 65, 0, 100),
             env.getOrDefault("ALLOWED_ORIGIN", "http://localhost:5173"),
             price(env, "AI_INPUT_USD_PER_MILLION"), price(env, "AI_OUTPUT_USD_PER_MILLION"),

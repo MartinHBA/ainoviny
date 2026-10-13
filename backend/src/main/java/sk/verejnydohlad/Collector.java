@@ -11,16 +11,18 @@ public final class Collector {
     private final SafeHttp http = new SafeHttp();
     public int collect(List<Source> sources, Store store, int max, Store.Guard guard, Instant deadline, List<String> errors) {
         int saved = 0, considered = 0; var robots = new Robots(http);
+        int perSource=Math.max(1,(int)Math.ceil((double)max/Math.max(1,sources.stream().filter(Source::enabled).count())));
         for (Source source : sources) {
             if (!source.enabled() || considered >= max || Instant.now().isAfter(deadline)) continue;
             try {
                 robots.requireAllowed(source.feedUrl(), source.allowedHosts());
                 var items = new FeedParser().parse(http.get(source.feedUrl(), source.allowedHosts()), source);
+                int sourceConsidered=0;
                 for (var item : items) {
-                    if (considered >= max || Instant.now().isAfter(deadline)) break;
-                    if (item.publishedAt().isBefore(Instant.now().minus(Duration.ofDays(7)))) continue;
+                    if (considered >= max || sourceConsidered>=perSource || Instant.now().isAfter(deadline)) break;
+                    if (item.publishedAt().isBefore(Instant.now().minus(Duration.ofDays(90)))) continue;
                     if (store.knownRelease(Normalize.hash(item.url()))) continue;
-                    considered++;
+                    considered++;sourceConsidered++;
                     try {
                         String body = item.body();
                         if (!source.bodySelector().isBlank()) {
@@ -36,7 +38,11 @@ public final class Collector {
                         String datePath = DateTimeFormatter.ofPattern("yyyy/MM").withZone(ZoneOffset.UTC).format(item.publishedAt());
                         var release = new Release(id, source.sourceId(), source.name(), item.url(), item.publishedAt(), Instant.now(), item.title(), body, hash,
                             source.sourceId() + "/" + datePath + "/" + id + "-" + hash + ".json");
-                        guard.check(); if (store.collect(release)) saved++;
+                        guard.check(); if (store.collect(release)) {
+                            saved++;
+                            // Older documents provide context, without becoming stale breaking-news candidates.
+                            if(item.publishedAt().isBefore(Instant.now().minus(Duration.ofDays(7)))) store.releaseStatus(release,"CONTEXT",null);
+                        }
                     } catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new IllegalStateException("Interrupted"); }
                     catch (Exception e) { errors.add(source.sourceId() + ": entry failed (" + e.getClass().getSimpleName() + ")"); }
                 }

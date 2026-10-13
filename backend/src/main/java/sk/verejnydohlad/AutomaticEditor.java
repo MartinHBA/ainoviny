@@ -22,6 +22,8 @@ public final class AutomaticEditor {
             .sorted(Comparator.comparing(Article::createdAt).thenComparing(Article::id)).toList();
         for(var candidate:candidates) {
             if(Instant.now().isAfter(deadline)) break;
+            var editorial=new Editorial(store,clock,config.maxPublished());
+            if(editorial.publicationLimitReached()) break;
             try {
                 guard.check();
                 String day=clock.instant().atZone(ZoneId.of("Europe/Bratislava")).toLocalDate().toString();
@@ -70,7 +72,7 @@ public final class AutomaticEditor {
                     guard.check(); store.updateArticle(a.state(Status.REVIEWED,audit.reviewedAt(),REVIEWER_PREFIX+model,approvalHash,null,a.blobPath()),old.version());
                 } else if(!approvalHash.equals(a.approvedHash()) || !a.reviewer().equals(REVIEWER_PREFIX+model))
                     throw new IllegalStateException("Automatic approval no longer matches article");
-                new Editorial(store,clock).publish(a.id(),guard); published++;
+                editorial.publish(a.id(),guard); published++;
             } catch(Exception e) {
                 LOG.log(Level.WARNING,"Chief editor failed for article "+candidate.id(),e);
                 errors.add("editor "+candidate.id()+": "+e.getClass().getSimpleName());

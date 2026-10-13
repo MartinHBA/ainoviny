@@ -8,6 +8,9 @@ flowchart LR
   C --> B[Private sources Blob container]
   C --> T[PressReleases table]
   T --> P[Daily pipeline with renewable Blob lease]
+  P --> Q[Retrieve related archived originals]
+  Q --> N[Stronger document analyst: cited findings and private leads]
+  N --> A
   P --> A[Azure OpenAI writing deployment]
   A --> D[Private draft Markdown and evidence map]
   D --> E[Separate stronger AI chief editor]
@@ -33,7 +36,7 @@ The duplicate URL and content-hash entries are inserted in one same-partition tr
 
 All article lifecycle, public date-index and public slug-index entities share a partition so publication commits as one Azure Table transaction. ETags prevent stale updates. Published Markdown is written privately first, then the three metadata rows commit together. A failed transaction leaves only private, unreachable bytes. A retry after a successful commit is a no-op. Public API never lists `id|` rows, never signs Blob URLs and never returns storage credentials.
 
-Public list traversal is ascending over reverse timestamps, newest first, with an opaque-in-practice but validated last-row cursor. Page size 1–30 (default 12); no offset scans or whole-table sorting. Category and edition filters are server-side non-key filters within the published row range. At three articles a day this is adequate; larger archives should add monthly/category partitioned indexes. Editorial repair and pending-release queries scan bounded result sets or canonical rows: at MVP volume this is deliberate simplicity, not a scale-out design.
+Public list traversal is ascending over reverse timestamps, newest first, with an opaque-in-practice but validated last-row cursor. Page size 1–30 (default 12); no offset scans or whole-table sorting. Category and edition filters are server-side non-key filters within the published row range. At five articles a day this is adequate; larger archives should add monthly/category partitioned indexes. Editorial repair and pending-release queries scan bounded result sets or canonical rows: at MVP volume this is deliberate simplicity, not a scale-out design.
 
 Source originals: `sources/{sourceId}/{yyyy}/{MM}/{urlHash}-{contentHash}.json`. Bodies never live in Table properties. Draft revisions: `articles/drafts/{articleId}/{markdownHash}.md`; generated structured checkpoints are nearby `.json`. Hash-qualified immutable revisions prevent an interrupted edit from overwriting approved bytes. Associated metadata contains title, perex, source URLs, evidence map, model, reviewer and timestamps. Final publication: `articles/published/{yyyy}/{MM}/{articleId}.md`. `images` is reserved and private; no third-party images are downloaded.
 
@@ -42,11 +45,11 @@ Source originals: `sources/{sourceId}/{yyyy}/{MM}/{urlHash}-{contentHash}.json`.
 1. Acquire a 60-second `sources/_ops/pipeline.lock` lease, renewed every 20 seconds. Editors use the same lease. A lost renewal stops subsequent writes.
 2. Collect independently per source with HTTPS allowlists, robots checks, no redirects, one-second body-fetch spacing, 15-second full-response timeouts, a 2 MB ceiling and at most two retries for transient failures. An unavailable robots file other than 404 fails closed.
 3. Recover incomplete articles and repair consumed-source flags for completed/rejected articles.
-4. Score new material in batches of six. Persist each score, reason, category and topic key. Mark routine/low-score material ignored. The initial seven-day collection window avoids importing years of old news.
-5. Group related releases by topic key and reserve up to three article IDs in a persisted daily budget. Insert a private `GENERATING` placeholder before any generation call.
-6. Generate JSON, validate schema/lengths, and persist an immutable checkpoint. Recover a checkpoint after a crash; do not regenerate an already stored draft.
+4. Score new material in batches of six. Persist each score, reason, category and topic key. Mark routine/low-score material ignored. Collection keeps available documents up to 90 days old; those older than seven days are marked context and never ranked as fresh news.
+5. Group related releases by topic key, retrieve related originals from a bounded archive and reserve up to eight concept IDs in a persisted daily budget. Insert a private `GENERATING` placeholder before any generation call. A separate stronger document analyst prepares an audited brief for inputs from multiple institutions; private hypotheses are not passed to the writer.
+6. Generate JSON, validate schema/lengths and analytical two-institution coverage, and persist an immutable checkpoint. Recover a checkpoint after a crash; do not regenerate an already stored draft.
 7. Run a separate model verification call plus deterministic numeric/quote/evidence/paragraph coverage checks. Store complete drafts whether the verification passes or flags issues. An incomplete/refused response remains private and can be resumed or rejected.
-8. Record result and class-only errors. No automatic publication.
+8. When automatic publication is enabled, independently review eligible drafts and publish at most five articles per Bratislava day. The cap includes manual publication, runs under the shared lease and counts actual publication timestamps. Record results and class-only errors; editor exception details are logged privately.
 
 The external AI request cannot be atomically committed with Storage. A crash after the service accepts a request but before checkpoint storage may repeat a charged request. Every attempt reserves its daily call count first, so spend remains bounded; duplicate articles remain prevented. Failed requests conservatively consume their reservation. Counts reset at Bratislava midnight; interrupted older articles need a slot in the current day's budget to resume. Article slots are retained after rejection/failure.
 
@@ -60,7 +63,7 @@ Edited text loses approval and AI clearance, needs a fresh verification pass, th
 
 ## Costs and observability
 
-Defaults: 3 article reservations/day, 20 considered releases/run, 16 attempted AI calls/day, 2,200 generation output tokens, 45-second AI timeout, relevance threshold 65. Ranking batches and checks have smaller caps. The final editor uses at most 1,600 output tokens and shares the persisted daily attempted-call budget. The writer/verifier see 10,000-character source excerpts; the final editor sees full original bodies, capped at 200,000 characters total per review. Oversized final-editor contexts fail before HTTP rather than silently truncate evidence. Generation targets 100–150 body words with concise evidence excerpts to fit within the configured output budget. Missing evidence must never be inferred.
+Defaults: 8 concept reservations/day, at most 5 publications/day, 40 considered releases/run, 40 attempted AI calls/day, 2,200 generation output tokens, 45-second AI timeout, relevance threshold 65. Ranking batches and checks have smaller caps. The analyst uses at most 1,800 output tokens and the final editor at most 1,600; all share the persisted daily attempted-call budget. The writer/verifier/analyst see 10,000-character source excerpts; the final editor sees full original bodies, capped at 200,000 characters total per review. Oversized final-editor contexts fail before HTTP rather than silently truncate evidence. Ordinary news targets 100–150 body words; viable analytical comparisons target 180–240. Missing evidence must never be inferred.
 
 Optional `AI_INPUT_USD_PER_MILLION` / `AI_OUTPUT_USD_PER_MILLION` settings log estimates and usage; zero means pricing is unconfigured, not free. Azure pricing differs by deployment type/region and is not hardcoded. Operations use JUL/context logging collected by the Function host; supply Application Insights connection string for production. Keep sampling and ingestion caps in existing monitoring. Storage and runtime/telemetry costs still exist outside free allowances; daily AI limits are not a global Azure spending cap.
 

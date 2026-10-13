@@ -1,6 +1,6 @@
 # VEREJNÝ DOHĽAD
 
-Slovak digital newspaper with a Java 21 Azure Functions editorial pipeline, React/TypeScript newspaper frontend, Blob/Table persistence, a separate AI chief editor for automatic publication, optional manual recovery CLI, Bicep and GitHub Actions. No cloud resources are provisioned by installing or running the local project.
+Slovak digital newspaper with a Java 21 Azure Functions editorial pipeline, React/TypeScript newspaper frontend, Blob/Table persistence, a document analyst and separate AI chief editor for automatic publication, optional manual recovery CLI, Bicep and GitHub Actions. No cloud resources are provisioned by installing or running the local project.
 
 ## Local setup
 
@@ -51,7 +51,9 @@ The fixture is prominently marked `[SYNTHETIC]`, and CLI fixture creation/public
 ./scripts/editorial/editorial.ps1 -SkipBuild collect
 ```
 
-Verified on 12 October 2026: Úrad vlády SR RSS, MF SR RSS and MH SR Atom. MV SR remains disabled without an established suitable endpoint. NKÚ has a real RSS feed but is disabled because tested item links redirected to a listing and several entries lacked canonical URLs. See [source verification](docs/sources.md) and the configurable [registry](backend/src/main/resources/sources.json).
+Verified on 13 October 2026: Úrad vlády SR, MF SR, MH SR, NKÚ SR, Rada pre rozpočtovú zodpovednosť and Národná banka Slovenska. MV SR remains disabled without an established suitable endpoint. See [source verification](docs/sources.md) and the configurable [registry](backend/src/main/resources/sources.json).
+
+Daily defaults allow **8 concept attempts and at most 5 published articles**, with 40 considered source documents and 40 attempted AI calls. Rejected drafts consume a concept attempt, not a publication slot. Accepted drafts waiting beyond the publication cap stay private for the next day. The document analyst uses the stronger deployment to compare up to six related documents retrieved from a bounded 90-day source archive. Analytical writing requires evidence from at least two institutions. Private unanswered leads are not supplied to the writer; see [analytical workflow](docs/editorial-workflow.md#document-analyst).
 
 To use the configured Azure deployment, set `AI_MODE=azure`, `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_DEPLOYMENT` in your ignored settings or environment. Prefer `az login` and **Cognitive Services OpenAI User** RBAC; an optional `AZURE_OPENAI_API_KEY` is supported for local development. Then `editorial.ps1 run` performs the morning pipeline. This step can incur model charges and is never run by offline tests. No paid calls were required to develop this repository.
 

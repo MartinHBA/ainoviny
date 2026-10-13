@@ -14,6 +14,8 @@ public final class Models {
     public record Draft(String title, String perex, String category, String markdown, List<Claim> claims) {}
     public record GenerationClaim(String text, String sourceId, String evidenceId) {}
     public record Generation(GenerationClaim title, GenerationClaim perex, String category, List<GenerationClaim> paragraphs) {}
+    public record ResearchBrief(boolean viable, boolean sensitive, String question, List<GenerationClaim> findings,
+                                List<String> limitations, List<String> leads) {}
     public record Verification(boolean passed, boolean sensitive, List<String> issues) {}
     public record EditorDecision(boolean approved, boolean sensitive, List<String> issues, String reason) {}
     public record Article(String id, String slug, String title, String perex, String category, Instant createdAt,
@@ -32,6 +34,10 @@ public final class Models {
                 sourceIds, sourceUrls, aiModel, reviewed, who, approval, contentHash, factCheckPassed, sensitive,
                 issues, claims, phase, editorialOrder, editionDate);
         }
+    }
+    public static Article withEdition(Article a,String date) {
+        return new Article(a.id(),a.slug(),a.title(),a.perex(),a.category(),a.createdAt(),a.generatedAt(),a.publishedAt(),a.status(),a.blobPath(),a.sourceIds(),a.sourceUrls(),
+            a.aiModel(),a.reviewedAt(),a.reviewer(),a.approvedHash(),a.contentHash(),a.factCheckPassed(),a.sensitive(),a.issues(),a.claims(),a.phase(),a.editorialOrder(),date);
     }
     public record Summary(String id, String slug, String title, String perex, String category, Instant publishedAt) {
         public static Summary of(Article a) { return new Summary(a.id(), a.slug(), a.title(), a.perex(), a.category(), a.publishedAt()); }

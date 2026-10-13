@@ -118,9 +118,21 @@ class AutomaticEditorTest {
         store.collect(Fixtures.release("unrelated-new-source"));ai.failAnalysis=true;store.failPublish=false;
         var result=pipeline.run(false);assertEquals(1,result.published());assertFalse(result.errors().isEmpty());assertEquals(1,ai.reviews);
     }
-    @Test void automaticPublicationSharesThreeArticleDailyLimit() {
+    @Test void eightConceptsHaveSeparateFivePublicationLimitAndResumeNextDay() {
         var store=new MemoryStore();for(int i=0;i<10;i++)store.collect(Fixtures.release("auto-quota-"+i));var ai=new EditorAi();
-        var pipeline=pipeline(store,ai);assertEquals(3,pipeline.run(false).published());assertEquals(3,ai.reviews);
-        assertEquals(0,pipeline.run(false).published());assertEquals(3,store.publicArticles.size());assertEquals(3,store.budget("2026-10-12").articleIds().size());
+        var pipeline=pipeline(store,ai);var result=pipeline.run(false);assertEquals(8,result.drafts());assertEquals(5,result.published());assertEquals(5,ai.reviews);
+        assertEquals(0,pipeline.run(false).published());assertEquals(5,store.publicArticles.size());assertEquals(8,store.budget("2026-10-12").articleIds().size());
+        assertEquals(5,1+store.latest().articles().size());
+        new Pipeline(store,ai,config(),Clock.offset(Fixtures.CLOCK,Duration.ofDays(1))).run(false);
+        assertEquals(5,store.publicArticles.values().stream().filter(a -> a.editionDate().equals("2026-10-13")).count());
+        assertEquals(5,store.publicArticles.values().stream().filter(a -> a.editionDate().equals("2026-10-12")).count());
+    }
+    @Test void rejectedConceptsLeaveFivePublicationSlotsAvailable() {
+        var store=new MemoryStore();for(int i=0;i<8;i++)store.collect(Fixtures.release("rejection-slots-"+i));
+        var ai=new EditorAi(){@Override public EditorDecision review(Draft d,List<Release> sources) {
+            reviews++;return reviews<=3?new EditorDecision(false,false,List.of("Missing attribution."),"Unsupported conclusion."):decision;
+        }};
+        var result=pipeline(store,ai).run(false);assertEquals(8,result.drafts());assertEquals(3,result.rejected());assertEquals(5,result.published());
+        assertEquals(8,store.budget("2026-10-12").articleIds().size());assertTrue(result.errors().isEmpty());
     }
 }

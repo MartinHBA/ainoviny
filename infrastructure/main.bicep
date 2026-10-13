@@ -23,15 +23,19 @@ param applicationInsightsConnectionString string = ''
 @description('Optional required monitoring component, using an already existing Log Analytics workspace.')
 param createApplicationInsights bool = false
 param existingLogAnalyticsWorkspaceId string = ''
-@maxValue(3)
+@description('Maximum daily concept attempts, including rejected or interrupted drafts.')
+@maxValue(8)
 @minValue(0)
-param maxArticlesPerDay int = 3
+param maxArticlesPerDay int = 8
+@maxValue(5)
+@minValue(0)
+param maxPublishedArticlesPerDay int = 5
 @maxValue(50)
 @minValue(1)
-param maxPressReleasesPerRun int = 20
+param maxPressReleasesPerRun int = 40
 @maxValue(100)
 @minValue(0)
-param maxAiCallsPerDay int = 16
+param maxAiCallsPerDay int = 40
 param maxTokensPerArticle int = 2200
 param aiRequestTimeout int = 45
 param aiInputUsdPerMillion string = '0'
@@ -131,6 +135,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'AUTO_PUBLISH_ENABLED', value: string(autoPublishEnabled) }
         { name: 'DAILY_SCHEDULE', value: dailySchedule }
         { name: 'MAX_ARTICLES_PER_DAY', value: string(maxArticlesPerDay) }
+        { name: 'MAX_PUBLISHED_ARTICLES_PER_DAY', value: string(maxPublishedArticlesPerDay) }
         { name: 'MAX_PRESS_RELEASES_PER_RUN', value: string(maxPressReleasesPerRun) }
         { name: 'MAX_AI_CALLS_PER_DAY', value: string(maxAiCallsPerDay) }
         { name: 'MAX_TOKENS_PER_ARTICLE', value: string(maxTokensPerArticle) }

@@ -1,6 +1,8 @@
 package sk.verejnydohlad;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import java.time.*;
 import java.util.*;
@@ -9,6 +11,51 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @EnabledIfSystemProperty(named="storage.integration",matches="true")
 class AzureStoreIT {
+    static final Map<String,Set<String>> existingKeys=new HashMap<>();
+    static com.azure.data.tables.models.TableEntity existingBudget;
+    static com.azure.data.tables.TableClient table(String name) {
+        return new com.azure.data.tables.TableClientBuilder().connectionString("UseDevelopmentStorage=true").tableName(name).buildClient();
+    }
+    @BeforeAll static void rememberEmulatorState() {
+        for(String name:List.of("Articles","Sources","PressReleases")) {
+            var client=table(name);try {client.createTable();}catch(com.azure.data.tables.models.TableServiceException e){if(e.getResponse().getStatusCode()!=409)throw e;}
+            var keys=new HashSet<String>();
+            for(var entity:client.listEntities()) {
+                keys.add(entity.getPartitionKey()+"/"+entity.getRowKey());
+                if(name.equals("Sources") && entity.getPartitionKey().equals("ops") && entity.getRowKey().equals("budget|2026-10-12")) existingBudget=entity;
+            }
+            existingKeys.put(name,keys);
+        }
+    }
+    @AfterAll static void removeOnlyEntitiesCreatedByThisTestRun() {
+        for(var entry:existingKeys.entrySet()) {
+            var client=table(entry.getKey());var added=new ArrayList<com.azure.data.tables.models.TableEntity>();
+            for(var entity:client.listEntities()) if(!entry.getValue().contains(entity.getPartitionKey()+"/"+entity.getRowKey()))added.add(entity);
+            for(var entity:added)client.deleteEntity(entity.getPartitionKey(),entity.getRowKey());
+        }
+        if(existingBudget!=null)table("Sources").upsertEntity(existingBudget);
+    }
+    @Test void fivePublicationLimitIncludesManualPublishingAndLatestEditionReturnsAllFive() {
+        var store=new AzureStore(Config.from(Map.of("APP_STORAGE_CONNECTION_STRING","UseDevelopmentStorage=true")));store.initialize(List.of());
+        var clock=Clock.offset(Fixtures.CLOCK,Duration.ofDays(10));var editor=new Editorial(store,clock,5);String lastId=null;
+        for(int i=0;i<6;i++) {
+            var r=Fixtures.release("five-publications-"+UUID.randomUUID());store.collect(r);
+            var d=new MockAi().generate(List.of(r));String id=Normalize.hash(r.id()),hash=Normalize.hash(d.markdown()),path="drafts/"+id+"/"+hash+".md";
+            var a=new Article(id,"synthetic-"+id.substring(0,16),d.title(),d.perex(),d.category(),Fixtures.CLOCK.instant(),Fixtures.CLOCK.instant(),null,Status.DRAFT,path,
+                List.of(r.id()),List.of(r.originalUrl()),"mock-offline-synthetic",null,null,null,hash,true,false,List.of(),d.claims(),"COMPLETE",i,"2026-10-12");
+            store.putBlob("articles",path,d.markdown());store.createArticle(a);editor.approve(id,"Integration reviewer",false);
+            if(i<5)editor.publish(id);else {assertThrows(IllegalStateException.class,() -> editor.publish(id));lastId=id;}
+        }
+        assertEquals(Status.REVIEWED,store.article(lastId).value().status());
+        assertEquals("2026-10-22",store.latest().date());assertEquals(5,store.latest().articles().size()+1);
+        editor.publish(store.latest().featured().id()); // Retry is idempotent even when the cap is full.
+    }
+    @Test void researchArchiveLoadsOriginalBodiesEvenAfterSourcesAreConsumed() {
+        var store=new AzureStore(Config.from(Map.of("APP_STORAGE_CONNECTION_STRING","UseDevelopmentStorage=true")));store.initialize(List.of());
+        var r=Fixtures.release("research-archive-"+UUID.randomUUID());store.collect(r);store.releaseStatus(r,"DONE",null);
+        var archive=store.recent(Fixtures.CLOCK.instant().minusSeconds(1),100);
+        assertTrue(archive.stream().anyMatch(item -> item.equals(r)));
+    }
     @Test void sourceChecksInitializeMissingRegistryRowsWithoutHumanCliSetup() {
         var store=new AzureStore(Config.from(Map.of("APP_STORAGE_CONNECTION_STRING","UseDevelopmentStorage=true")));store.initialize(List.of());
         var fixture=Fixtures.source();String id="source-check-"+UUID.randomUUID();
