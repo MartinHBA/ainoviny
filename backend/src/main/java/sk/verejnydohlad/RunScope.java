@@ -10,18 +10,17 @@ record RunScope(String id) {
     }
     static RunScope scheduled(){return new RunScope("scheduled");}
     static RunScope adHoc(){return new RunScope(UUID.randomUUID().toString());}
-    static RunScope timer(String input) {
+    static RunScope manualInput(String input) {
         String value=input==null?"":input.strip();
         if(value.startsWith("\"") || value.startsWith("{"))try {
             var node=Json.tree(value);
             if(node.isTextual())value=node.asText();
             else if(node.isObject() && node.size()==1 && node.path("input").isTextual())value=node.path("input").asText();
-        }catch(IllegalArgumentException ignored){/* Actual timer information remains scheduled. */}
-        // Azure's native admin invocation supplies the timer input as a string. Never classify
-        // a real JSON TimerInfo/ScheduleStatus payload by searching for a substring.
+        }catch(IllegalArgumentException ignored){/* Reject unsupported manual input below. */}
+        // Queue binding preserves native admin input; timer binding replaces it with TimerInfo.
         if(value.equals("adhoc") || value.equals("manual-after-update"))return adHoc();
         if(value.startsWith("adhoc:"))return new RunScope(value.substring(6));
-        return scheduled();
+        throw new IllegalArgumentException("Expected adhoc or adhoc:UUID manual input");
     }
     boolean manual(){return !id.equals("scheduled");}
     String label(){return manual()?"adhoc|"+id:"scheduled";}

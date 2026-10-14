@@ -20,7 +20,14 @@ public final class Functions {
     }
     @FunctionName("MorningEdition")
     public void timer(@TimerTrigger(name="timer",schedule="%DAILY_SCHEDULE%") String timer,ExecutionContext context) {
-        var scope=RunScope.timer(timer);
+        execute(RunScope.scheduled(),context);
+    }
+    @FunctionName("AdHocEdition")
+    public void manual(@QueueTrigger(name="input",queueName="editorial-adhoc",connection="AzureWebJobsStorage") String input,ExecutionContext context) {
+        execute(RunScope.manualInput(input),context);
+    }
+    private void execute(RunScope scope,ExecutionContext context) {
+        context.getLogger().info(Json.write(Map.of("event","pipeline-started","scope",scope.label())));
         var result=App.instance().pipeline.run(true,scope);context.getLogger().info(Json.write(Map.of("scope",scope.label(),"result",result)));
     }
     private HttpResponseMessage response(HttpRequestMessage<?> request,ExecutionContext context,Supplier<Object> action) {

@@ -50,12 +50,14 @@ class AdHocRunTest {
         var ai=new CitationCorrectionTest.CorrectingAi(){@Override public Verification verify(Draft draft,List<Release> sources){return new Verification(true,true,List.of());}};
         assertEquals(1,new Pipeline(store,ai,config(),Fixtures.CLOCK).run(false,scope).rejected());assertTrue(store.publicArticles.isEmpty());
     }
-    @Test void explicitNativeAdminMarkerIsManualWhileRealTimerJSONRemainsScheduled() {
-        String id=UUID.randomUUID().toString();assertEquals(new RunScope(id),RunScope.timer("adhoc:"+id));assertTrue(RunScope.timer("adhoc").manual());
-        assertTrue(RunScope.timer("manual-after-update").manual());assertFalse(RunScope.timer("{\"ScheduleStatus\":{},\"IsPastDue\":false,\"note\":\"adhoc\"}").manual());
-        assertEquals(new RunScope(id),RunScope.timer(Json.write("adhoc:"+id)));
-        assertEquals(new RunScope(id),RunScope.timer(Json.write(Map.of("input","adhoc:"+id))));
-        assertFalse(RunScope.timer(null).manual());assertThrows(IllegalArgumentException.class,() -> RunScope.timer("adhoc:not-a-uuid"));
+    @Test void explicitNativeAdminMarkerIsManualAndInvalidManualPayloadCannotBecomeScheduled() {
+        String id=UUID.randomUUID().toString();assertEquals(new RunScope(id),RunScope.manualInput("adhoc:"+id));assertTrue(RunScope.manualInput("adhoc").manual());
+        assertTrue(RunScope.manualInput("manual-after-update").manual());
+        assertEquals(new RunScope(id),RunScope.manualInput(Json.write("adhoc:"+id)));
+        assertEquals(new RunScope(id),RunScope.manualInput(Json.write(Map.of("input","adhoc:"+id))));
+        for(String invalid:List.of("","scheduled","adhoc:not-a-uuid","{\"ScheduleStatus\":{},\"IsPastDue\":false,\"note\":\"adhoc\"}"))
+            assertThrows(IllegalArgumentException.class,() -> RunScope.manualInput(invalid));
+        assertThrows(IllegalArgumentException.class,() -> RunScope.manualInput(null));
     }
     @Test void researchedManualFlowRoutesEveryStageIncludingFinalEditorToItsOwnLedger() {
         var store=ResearchFlowTest.store();var ai=new ResearchFlowTest.AssistantAi();var scope=RunScope.adHoc();

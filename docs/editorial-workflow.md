@@ -58,7 +58,7 @@ The correction uses `gpt-4.1` in a fresh writing call with the rejected draft, e
 
 The scheduled timer retains the Bratislava-day ledger and daily 6/3/40 limits. Explicit ad hoc execution has its own `budget|adhoc|UUID` ledger in `Sources.ops`, with the same configured limits applied per manual run. It can work after scheduled calls, concepts or publications are exhausted. Its calls/concepts do not mutate the daily ledger; its publications are tagged `publicationScope=adhoc|UUID` on canonical/public/slug rows in the same atomic Table transaction, and do not reduce scheduled publication capacity. Older untagged publications remain classified as scheduled. Ordinary standalone human CLI `publish` remains part of the daily allowance.
 
-The Azure native admin endpoint requires `_master` in `x-functions-key`. Use an explicit run ID so retrying a request continues the same bounded run instead of creating another budget:
+Use the separate `AdHocEdition` function. Its queue binding (`editorial-adhoc`, using the existing host `AzureWebJobsStorage` connection) preserves manual input; the native admin call invokes it directly without enqueueing a message. `MorningEdition` always uses the daily budget: Azure timer binding replaces admin input with TimerInfo, so that endpoint cannot select an ad hoc scope. The Azure native admin endpoint requires `_master` in `x-functions-key`. Use an explicit run ID so retrying a request continues the same bounded run instead of creating another budget:
 
 ```powershell
 $runId = [guid]::NewGuid().ToString()
@@ -68,7 +68,7 @@ try {
     if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($key)) { throw 'Master key unavailable.' }
     $body = @{ input = "adhoc:$runId" } | ConvertTo-Json -Compress
     $response = Invoke-WebRequest -UseBasicParsing -Method Post `
-        -Uri 'https://verejnydohlad-wny6o5yct2uf2.azurewebsites.net/admin/functions/MorningEdition' `
+        -Uri 'https://verejnydohlad-wny6o5yct2uf2.azurewebsites.net/admin/functions/AdHocEdition' `
         -Headers @{ 'x-functions-key' = $key } -ContentType 'application/json' `
         -Body $body -TimeoutSec 60
     "HTTP $($response.StatusCode); runId=$runId"
@@ -76,7 +76,9 @@ try {
 finally { $key = $null }
 ```
 
-HTTP 202 acknowledges the request; the pipeline completes asynchronously. Find the actual result and any errors in `MorningEdition` logs (`scope`, `result`) or the `Sources.ops` run entry with its `scope` property. `{"input":"adhoc"}` generates a fresh ID, and the earlier `manual-after-update` marker is also recognized as ad hoc. Normal TimerInfo JSON stays scheduled even if it contains the word adhoc. Invalid explicit IDs are rejected. The admin endpoint is Azure's platform endpoint, not a new anonymous application HTTP route.
+HTTP 202 acknowledges the request; the pipeline completes asynchronously. In Function App → Monitoring → Log stream, look for `AdHocEdition`, the `pipeline-started` event with its scope, and the final `{scope,result}` summary. For a completed run, open Storage browser → Tables → Sources and filter `PartitionKey eq 'ops'`; find a `run|...` row with `scope=adhoc|UUID`. Its JSON `payload` contains `completedAt`, `collected`, `drafts`, `published`, `rejected` and `errors`. The run row is written at completion, not at request acceptance; a host crash may leave no final row. Function execution success alone does not guarantee a publication or empty `errors`. Application Insights invocation history is another option when configured.
+
+`{"input":"adhoc"}` generates a fresh ID, and the earlier `manual-after-update` marker is also recognized as ad hoc on `AdHocEdition`. Invalid IDs, empty input and unsupported input fail instead of falling back to the scheduled budget. The admin endpoint is Azure's platform endpoint, not a new anonymous application HTTP route.
 
 CLI `editorial.ps1 run` is now ad hoc; `editorial.ps1 run UUID` resumes that manual budget. A global lease still prevents overlapping scheduled/manual runs. Content IDs, immutable evidence, approvals and publication transactions are unchanged, so re-running cannot duplicate terminal stories or force unsupported publication. A manual run can complete existing private work; older charged/reserved daily attempts remain counted. If a later scheduled run continues unfinished work, those new attempts count in that scheduled day's ledger. All paid manual calls remain chargeable. There is no aggregate daily ceiling across arbitrary new manual IDs; only authorized administrators can invoke this path.
 
