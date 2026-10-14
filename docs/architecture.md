@@ -44,7 +44,7 @@ Source originals: `sources/{sourceId}/{yyyy}/{MM}/{urlHash}-{contentHash}.json`.
 
 1. Acquire a 60-second `sources/_ops/pipeline.lock` lease, renewed every 20 seconds. Editors use the same lease. A lost renewal stops subsequent writes.
 2. Collect independently per source with HTTPS allowlists, robots checks, no redirects, one-second body-fetch spacing, 15-second full-response timeouts, a 2 MB ceiling and at most two retries for transient failures. An unavailable robots file other than 404 fails closed.
-3. Recover incomplete articles and repair consumed-source flags for completed/rejected articles.
+3. Restore incorrectly consumed legacy context, prepare at most one separately audited citation correction for an eligible preliminary rejection, recover incomplete articles and repair consumed flags for primary topic inputs only. Context never suppresses another news topic.
 4. Score new material in batches of six. Persist each score, reason, category and topic key. Mark routine/low-score material ignored. Collection keeps available documents up to 90 days old; those older than seven days are marked context and never ranked as fresh news.
 5. Group related releases by topic key, retrieve related originals from a bounded archive and reserve up to eight concept IDs in a persisted daily budget. Insert a private `GENERATING` placeholder before any generation call. A separate stronger document analyst prepares an audited brief for inputs from multiple institutions; private hypotheses are not passed to the writer.
 6. Generate JSON, validate schema/lengths and analytical two-institution coverage, and persist an immutable checkpoint. Recover a checkpoint after a crash; do not regenerate an already stored draft.

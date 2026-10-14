@@ -119,6 +119,9 @@ public final class AzureStore implements Store {
         var e = get(releases, PRESS, "url|" + r.id());
         return e == null || e.getProperty("analysis") == null ? null : Json.read((String)e.getProperty("analysis"), Analysis.class);
     }
+    public String releaseStatus(Release r) {
+        var entity=get(releases,PRESS,"url|"+r.id());return entity==null?null:(String)entity.getProperty("processingStatus");
+    }
     private TableEntity articleEntity(Article a, String key) {
         if(Json.write(a).length()>30000) throw new IllegalArgumentException("Article metadata exceeds Table property limit");
         return new TableEntity(NEWSROOM, key).addProperty("payload", Json.write(a)).addProperty("status", a.status().name())

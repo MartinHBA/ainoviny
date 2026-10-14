@@ -21,6 +21,7 @@ class MemoryStore implements Store {
     public List<Release> recent(Instant since,int max) { return releases.values().stream().filter(r -> !r.publishedAt().isBefore(since)).sorted(Comparator.comparing(Release::publishedAt).reversed()).limit(max).toList(); }
     public void releaseStatus(Release r,String s,Analysis a) {statuses.put(r.id(),s);if(a!=null)rankings.put(r.id(),a);}
     public Analysis analysis(Release r) {return rankings.get(r.id());}
+    public String releaseStatus(Release r) {return statuses.get(r.id());}
     public Versioned<Article> article(String id) {return articles.get(id);}
     public boolean createArticle(Article a) {if(articles.containsKey(a.id()))return false;articles.put(a.id(),new Versioned<>(a,""+(++version)));return true;}
     public void updateArticle(Article a,String v) {if(!articles.get(a.id()).version().equals(v))throw new IllegalStateException("stale");articles.put(a.id(),new Versioned<>(a,""+(++version)));}

@@ -52,7 +52,8 @@ class AzureStoreIT {
     }
     @Test void researchArchiveLoadsOriginalBodiesEvenAfterSourcesAreConsumed() {
         var store=new AzureStore(Config.from(Map.of("APP_STORAGE_CONNECTION_STRING","UseDevelopmentStorage=true")));store.initialize(List.of());
-        var r=Fixtures.release("research-archive-"+UUID.randomUUID());store.collect(r);store.releaseStatus(r,"DONE",null);
+        var r=Fixtures.release("research-archive-"+UUID.randomUUID());store.collect(r);assertEquals("PENDING",store.releaseStatus(r));
+        store.releaseStatus(r,"DONE",null);assertEquals("DONE",store.releaseStatus(r));
         var archive=store.recent(Fixtures.CLOCK.instant().minusSeconds(1),100);
         assertTrue(archive.stream().anyMatch(item -> item.equals(r)));
     }

@@ -8,6 +8,7 @@ import java.util.logging.Logger;
 import sk.verejnydohlad.Models.*;
 
 public final class Pipeline {
+    public record CorrectionInput(String parentId,String inputHash,String model,Instant createdAt) {}
     private static final Logger LOG=Logger.getLogger(Pipeline.class.getName());
     private final Store store; private final Ai ai; private final Config config; private final Clock clock;
     public Pipeline(Store store,Ai ai,Config config,Clock clock) { this.store=store; this.ai=ai; this.config=config; this.clock=clock; }
@@ -17,15 +18,38 @@ public final class Pipeline {
             Instant deadline=Instant.now().plusSeconds(480);
             if(collect) collected=new Collector().collect(SourceRegistry.load(),store,config.maxReleases(),guard,Instant.now().plusSeconds(120),errors);
             try {
+                var existing=store.editorial();
+                var primary=new HashSet<String>();existing.forEach(a -> primary.addAll(SourceInputs.seeds(a)));
+                // Earlier releases consumed every context input. Restore only inputs that were never a primary topic.
+                var contexts=new HashSet<String>();existing.forEach(a -> contexts.addAll(a.sourceIds()));contexts.removeAll(primary);
+                for(String id:contexts) {
+                    var source=store.release(id);
+                    if(!"DONE".equals(store.releaseStatus(source)))continue;
+                    var analysis=store.analysis(source);String state=source.publishedAt().isBefore(clock.instant().minus(Duration.ofDays(7)))?"CONTEXT":
+                        analysis==null?"PENDING":analysis.score()<config.minScore()?"IGNORED":"ANALYZED";
+                    guard.check();store.releaseStatus(source,state,null);
+                }
+                for(var parent:existing) {
+                    if(!config.autoPublish() || !SourceInputs.correctionCandidate(parent) || store.article(SourceInputs.correctionId(parent.id()))!=null)continue;
+                    if(SourceInputs.seeds(parent).stream().map(store::release).noneMatch(r -> !r.publishedAt().isBefore(clock.instant().minus(Duration.ofDays(7)))))continue;
+                    String id=SourceInputs.correctionId(parent.id());guard.check();if(!store.reserveArticle(day(),id,config.maxArticles()))break;
+                    var sources=parent.sourceIds().stream().map(store::release).toList();
+                    String hash=Normalize.hash(Json.write(List.of(parent,sources,ai.editorModel(),SourceInputs.CORRECTION_POLICY)));
+                    String inputPath="corrections/"+id+"/input.json";
+                    if(store.optionalBlob("articles",inputPath)==null) {guard.check();store.putBlob("articles",inputPath,Json.write(new CorrectionInput(parent.id(),hash,ai.editorModel(),clock.instant())));}
+                    var correction=new Article(id,"sprava-"+id.substring(0,16),"Pripravuje sa oprava","",parent.category(),clock.instant(),null,null,Status.DRAFT,"",
+                        parent.sourceIds(),parent.sourceUrls(),ai.model().startsWith("mock")?ai.model():ai.editorModel(),null,null,null,"",false,false,List.of(),List.of(),"CORRECTING",
+                        store.budget(day()).articleIds().indexOf(id),day());guard.check();store.createArticle(correction);
+                }
                 // Repair a crash between saving a completed draft and marking its input material consumed.
                 var incomplete=new ArrayList<Article>();
                 for(Article a:store.editorial()) {
-                    if(a.phase().equals("COMPLETE") || a.status()==Status.REJECTED) { for(String id:a.sourceIds()) { guard.check(); store.releaseStatus(store.release(id),"DONE",null); } }
+                    if(a.phase().equals("COMPLETE") || a.status()==Status.REJECTED) { for(String id:SourceInputs.seeds(a)) { guard.check(); store.releaseStatus(store.release(id),"DONE",null); } }
                     else incomplete.add(a);
                 }
                 Set<String> claimed=new HashSet<>();
                 for(Article a:incomplete) {
-                    claimed.addAll(a.sourceIds());
+                    claimed.addAll(SourceInputs.seeds(a));
                     try { if(process(a,a.sourceIds().stream().map(store::release).toList(),guard,deadline)) drafts++; }
                     catch(Exception e) { LOG.log(Level.WARNING,"Failed to resume article "+a.id(),e);errors.add("resume "+a.id()+": "+errorDescription(e)); }
                 }
@@ -68,7 +92,7 @@ public final class Pipeline {
                         "",group.stream().map(Release::id).toList(),group.stream().map(Release::originalUrl).distinct().toList(),ai.model(),
                         null,null,null,"",false,false,List.of(),List.of(),"GENERATING",store.budget(day).articleIds().indexOf(id),day);
                     guard.check(); if(!store.createArticle(initial)) continue;
-                    group.forEach(r -> consumed.add(r.id()));
+                    seeds.forEach(r -> consumed.add(r.id()));
                     try { if(process(initial,group,guard,deadline)) drafts++; }
                     catch(Exception e) { LOG.log(Level.WARNING,"Failed to draft article "+id,e);errors.add("draft "+id+": "+errorDescription(e)); }
                 }
@@ -86,7 +110,24 @@ public final class Pipeline {
         var stored=store.article(initial.id()); Article a=stored.value();
         if(a.phase().equals("COMPLETE")) return false;
         Draft draft;
-        if(a.phase().equals("GENERATING")) {
+        if(a.phase().equals("CORRECTING")) {
+            var input=Json.read(store.blob("articles","corrections/"+a.id()+"/input.json"),CorrectionInput.class);
+            var parent=store.article(input.parentId()).value();
+            String hash=Normalize.hash(Json.write(List.of(parent,group,ai.editorModel(),SourceInputs.CORRECTION_POLICY)));
+            if(!a.id().equals(SourceInputs.correctionId(parent.id())) || !SourceInputs.correctionCandidate(parent) || !hash.equals(input.inputHash()) || !ai.editorModel().equals(input.model()))
+                throw new IllegalStateException("Invalid citation correction input");
+            var original=new Draft(parent.title(),parent.perex(),parent.category(),store.blob("articles",parent.blobPath()),parent.claims());
+            if(!Normalize.hash(original.markdown()).equals(parent.contentHash()))throw new IllegalStateException("Rejected draft changed before correction");
+            String checkpoint="corrections/"+a.id()+"/generated.json";String cached=store.optionalBlob("articles",checkpoint);
+            draft=cached==null?paid(() -> ai.correct(original,group,parent.issues()),guard,deadline):Json.read(cached,Draft.class);Validation.draft(draft);
+            var institutions=group.stream().collect(java.util.stream.Collectors.toMap(Release::id,Release::sourceId));
+            if(parent.claims().stream().map(c -> institutions.get(c.sourceId())).filter(Objects::nonNull).distinct().count()>=2)
+                Research.coverage(draft,new ResearchBrief(true,false,"",List.of(),List.of(),List.of()),group);
+            guard.check();store.putBlob("articles",checkpoint,Json.write(draft));
+            var next=new Article(a.id(),Normalize.slug(draft.title())+"-"+a.id().substring(0,12),draft.title(),draft.perex(),draft.category(),a.createdAt(),clock.instant(),null,Status.DRAFT,
+                checkpoint,a.sourceIds(),a.sourceUrls(),a.aiModel(),null,null,null,"",false,false,List.of(),draft.claims(),"VERIFYING",a.editorialOrder(),a.editionDate());
+            guard.check();store.updateArticle(next,stored.version());stored=store.article(a.id());a=stored.value();
+        } else if(a.phase().equals("GENERATING")) {
             String checkpoint="drafts/"+a.id()+"/generated.json";
             String recovered=store.optionalBlob("articles",checkpoint);
             ResearchBrief brief=null;
@@ -125,7 +166,7 @@ public final class Pipeline {
         String hash=Normalize.hash(draft.markdown()), path="drafts/"+a.id()+"/"+hash+".md";
         guard.check(); store.putBlob("articles",path,draft.markdown());
         guard.check(); store.updateArticle(a.revise(draft,path,hash,verification,clock.instant()),stored.version());
-        for(Release r:group) { guard.check(); store.releaseStatus(r,"DONE",null); }
+        for(String id:SourceInputs.seeds(a)) { guard.check(); store.releaseStatus(store.release(id),"DONE",null); }
         return true;
     }
     private <T> T paid(Supplier<T> action,Store.Guard guard,Instant deadline) {

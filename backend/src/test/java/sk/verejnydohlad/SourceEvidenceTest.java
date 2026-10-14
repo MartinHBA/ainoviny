@@ -6,6 +6,25 @@ import sk.verejnydohlad.Models.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class SourceEvidenceTest {
+    @Test void numericalCitationCanUseAnotherProvidedContiguousExcerptFromSameDocument() {
+        var fixture=Fixtures.release("numeric-selection");String text="Parlament schválil rozpočet na roky 2027 až 2029.";
+        String body=text+" "+"Schválený rozpočet obsahuje verejné výdavky a príjmy. ".repeat(80);
+        var source=new Release(fixture.id(),fixture.sourceId(),fixture.organization(),fixture.originalUrl(),fixture.publishedAt(),fixture.collectedAt(),
+            "Parlament schválil rozpočet",body,Normalize.hash(body),fixture.blobPath());
+        var claim=new GenerationClaim(text,source.id(),"title");
+        var draft=SourceEvidence.assemble(new Generation(claim,claim,"Verejné peniaze",List.of(new GenerationClaim(text+" Parlament o rozpočte rozhodol na rokovaní.",source.id(),"body-0"))),List.of(source));
+        assertTrue(draft.claims().getFirst().evidence().contains("2029"));assertTrue(body.contains(draft.claims().getFirst().evidence()));
+        assertTrue(Validation.grounded(draft,List.of(source),new Verification(true,false,List.of())).passed());
+    }
+    @Test void numericalCitationNeverBorrowsEvidenceFromAnotherDocumentOrStitchesDistantSpans() {
+        var fixture=Fixtures.release("same-source-only");String body="Zdroj uvádza rok 2027. "+"Samostatný odstavec s kontextom. ".repeat(100)+" Zdroj uvádza rok 2029.";
+        var source=new Release(fixture.id(),fixture.sourceId(),fixture.organization(),fixture.originalUrl(),fixture.publishedAt(),fixture.collectedAt(),
+            "Parlament schválil rozpočet",body,Normalize.hash(body),fixture.blobPath());
+        var other=ResearchTest.document("other-years","other","Roky 2027 až 2029","Druhý nezávislý podklad uvádza roky 2027 až 2029 spoločne.");
+        String text="Parlament schválil rozpočet na roky 2027 až 2029.";var claim=new GenerationClaim(text,source.id(),"title");
+        var draft=SourceEvidence.assemble(new Generation(claim,claim,"Verejné peniaze",List.of(new GenerationClaim(text+" Ide o rozpočtové rozhodnutie parlamentu.",source.id(),"body-0"))),List.of(source,other));
+        assertEquals(source.title(),draft.claims().getFirst().evidence());assertFalse(Validation.grounded(draft,List.of(source,other),new Verification(true,false,List.of())).passed());
+    }
     @Test void everyEvidenceIdResolvesToAnUnalteredBoundedContiguousOriginal() {
         var r=Fixtures.release("excerpts");String body="A complete source sentence with factual context. ".repeat(300);
         var source=new Release(r.id(),r.sourceId(),r.organization(),r.originalUrl(),r.publishedAt(),r.collectedAt(),r.title(),body,Normalize.hash(body),r.blobPath());

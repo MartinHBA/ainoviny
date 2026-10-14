@@ -57,7 +57,7 @@ Daily defaults allow **8 concept attempts and at most 5 published articles**, wi
 
 To use the configured Azure deployment, set `AI_MODE=azure`, `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_DEPLOYMENT` in your ignored settings or environment. Prefer `az login` and **Cognitive Services OpenAI User** RBAC; an optional `AZURE_OPENAI_API_KEY` is supported for local development. Then `editorial.ps1 run` performs the morning pipeline. This step can incur model charges and is never run by offline tests. No paid calls were required to develop this repository.
 
-Timer: `0 0 3 * * *` means **03:00 UTC**, **04:00 CET / 05:00 CEST**. Collection has a two-minute budget; pipeline has an eight-minute budget within the Consumption host's ten-minute timeout. This leaves margin before 07:00 Bratislava. Outages may delay or prevent an edition; there is no guaranteed completion SLA. Manual execution is a local RBAC CLI command, not a public administrative endpoint.
+Timer: `0 0 3 * * *` means **03:00 UTC**, **04:00 CET / 05:00 CEST**. Collection has a two-minute budget; pipeline has an eight-minute budget within the Consumption host's ten-minute timeout. A numerical citation error in a preliminary rejection can create one audited correction concept that must pass fresh verification and final review; the parent remains rejected, and there is no correction chain. Context documents remain reusable for other topics. Outages, unavailable fresh source material and failed checks may delay or prevent an edition; there is no guaranteed completion SLA. Manual execution is a local RBAC CLI command, not a public administrative endpoint.
 
 ## Tests and builds
 

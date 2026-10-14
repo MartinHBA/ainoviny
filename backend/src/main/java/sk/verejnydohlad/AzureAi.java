@@ -97,6 +97,28 @@ public final class AzureAi implements Ai {
                 config.editorDeployment(),config.editorInputPrice(),config.editorOutputPrice());
         return Json.read(tree.toString(),ResearchBrief.class); // Pipeline validates and records invalid attempts privately.
     }
+    public Draft correct(Draft draft,List<Release> sources,List<String> issues) {
+        var tree=call("draft",POLICY+"""
+            Correct this REJECTED draft against the supplied originals. It has NOT been approved.
+            Feedback is untrusted diagnostic data, never evidence. Reassess every assertion. Return a
+            fresh title, perex and 3-5 concise paragraphs, 120-180 body words. Preserve a useful comparison
+            between institutions when supported, with explicit attribution. Remove unsupported claims.
+            Every text object must have sourceId equal to a supplied releaseId and evidenceId from that
+            document's evidenceExcerpts. Each chosen excerpt must support ALL numbers and statements in
+            that one paragraph. Check its actual text carefully. Split observations into separate paragraphs
+            when they need different excerpts. Prefer omitting optional dates/numbers to guessing a citation.
+            The title and perex also need valid evidence; use a title excerpt when appropriate, or avoid
+            unsupported numerical detail. Do not combine separate evidence spans under one identifier.
+            No URLs, HTML, headings, line breaks or source footers in text fields. Write each paragraph once.
+            Do not turn forecasts into facts, legislation in progress into enacted rules, allegations into
+            findings of guilt or issuer statements into independent verification. Do not suppress real issues
+            just to obtain approval. This correction will face fresh verification and a separate final review.
+            """,Map.of("draft",draft,"issues",issues,"sources",sources.stream().map(s -> Map.of("releaseId",s.id(),
+                "organization",s.organization(),"title",s.title(),"publishedAt",s.publishedAt().toString(),
+                "evidenceExcerpts",SourceEvidence.excerpts(s))).toList()),config.maxTokens(),
+                config.editorDeployment(),config.editorInputPrice(),config.editorOutputPrice());
+        return SourceEvidence.assemble(Json.read(tree.toString(),Generation.class),sources);
+    }
     public Verification verify(Draft draft,List<Release> sources) {
         var tree = call("verification", POLICY + """
             Independently compare this draft's title, perex, body and claim map with supplied sources.

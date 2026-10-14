@@ -31,6 +31,17 @@ class AzureAiTest {
         http.payload=response(Json.write(new Verification(true,false,List.of())),"stop",null);assertTrue(ai.verify(d,List.of(r)).passed());
         assertEquals("writer-mini",Json.tree(http.requestBody()).path("model").asText());
     }
+    @Test void correctionUsesStrongDeploymentAndProvidedEvidenceButNeverApprovesPublication() {
+        var http=new OfflineHttp();var ai=new AzureAi(config(),http);var source=Fixtures.release("correction-contract");var d=new MockAi().generate(List.of(source));
+        var claims=d.claims().stream().map(c -> new GenerationClaim(c.text(),c.sourceId(),"body-0")).toList();
+        http.payload=response(Json.write(new Generation(claims.get(0),claims.get(1),d.category(),claims.subList(2,claims.size()))),"stop",null);
+        assertEquals(d,ai.correct(d,List.of(source),List.of("Numeric claim is not grounded: 999")));
+        var request=Json.tree(http.requestBody());assertEquals("chief-editor",request.path("model").asText());
+        assertEquals("draft",request.path("response_format").path("json_schema").path("name").asText());
+        var input=Json.tree(request.path("messages").get(1).path("content").asText());assertEquals(d.title(),input.path("draft").path("title").asText());
+        assertEquals(1,input.path("issues").size());assertTrue(input.path("sources").get(0).path("evidenceExcerpts").isArray());
+        http.payload=response("{}","length",null);assertThrows(IllegalArgumentException.class,() -> ai.correct(d,List.of(source),List.of("Unsupported number.")));
+    }
     @Test void refusedTruncatedMalformedAndContradictoryEditorResponsesAreRejected() {
         var http=new OfflineHttp();var ai=new AzureAi(config(),http);var r=Fixtures.release("bad-contract");var d=new MockAi().generate(List.of(r));
         String valid=Json.write(new EditorDecision(true,false,List.of(),"Approved synthetic request contract."));

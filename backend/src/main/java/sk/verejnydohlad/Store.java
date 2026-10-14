@@ -18,6 +18,7 @@ public interface Store {
     List<Release> pending(int limit);
     List<Release> recent(java.time.Instant since, int limit);
     void releaseStatus(Release release, String status, Analysis analysis);
+    String releaseStatus(Release release);
     Analysis analysis(Release release);
     Versioned<Article> article(String id);
     boolean createArticle(Article article);
