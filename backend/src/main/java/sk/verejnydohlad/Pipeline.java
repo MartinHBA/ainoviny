@@ -149,7 +149,7 @@ public final class Pipeline {
             if(!Normalize.hash(original.markdown()).equals(parent.contentHash()))throw new IllegalStateException("Rejected draft changed before correction");
             String checkpoint="corrections/"+a.id()+"/generated.json";String cached=store.optionalBlob("articles",checkpoint);
             draft=cached==null?paid(() -> ai.correct(original,group,parent.issues()),guard,deadline):Json.read(cached,Draft.class);Validation.draft(draft);
-            var institutions=group.stream().collect(java.util.stream.Collectors.toMap(Release::id,Release::sourceId));
+            var institutions=group.stream().collect(java.util.stream.Collectors.toMap(Release::id,s -> ResearchRegistry.group(s.sourceId())));
             if(parent.claims().stream().map(c -> institutions.get(c.sourceId())).filter(Objects::nonNull).distinct().count()>=2)
                 Research.coverage(draft,new ResearchBrief(true,false,"",List.of(),List.of(),List.of()),group);
             guard.check();store.putBlob("articles",checkpoint,Json.write(draft));

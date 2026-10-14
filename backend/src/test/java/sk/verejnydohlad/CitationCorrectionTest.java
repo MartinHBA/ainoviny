@@ -6,6 +6,20 @@ import sk.verejnydohlad.Models.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class CitationCorrectionTest {
+    @Test void ordinaryCorrectionDoesNotMistakeMFAndIFPForAnIndependentAnalyticalComparison() {
+        var store=new MemoryStore();var parent=rejected(store);var first=store.release(parent.sourceIds().getFirst());
+        var mf=new Release(first.id(),"mf-sr",first.organization(),first.originalUrl(),first.publishedAt(),first.collectedAt(),first.title(),first.body(),first.contentHash(),first.blobPath());
+        store.releases.put(mf.id(),mf);
+        var ifp=ResearchFlowTest.source("same-ministry-context","ifp-sr");store.collect(ifp);store.releaseStatus(ifp,"CONTEXT",null);
+        var claims=new ArrayList<>(parent.claims());claims.add(new Claim(ifp.body(),ifp.id(),ifp.body()));
+        String markdown=store.blob("articles",parent.blobPath())+"\n\n"+ifp.body(),hash=Normalize.hash(markdown),path="drafts/"+parent.id()+"/"+hash+".md";
+        store.putBlob("articles",path,markdown);
+        var withContext=new Article(parent.id(),parent.slug(),parent.title(),parent.perex(),parent.category(),parent.createdAt(),parent.generatedAt(),null,Status.REJECTED,path,
+            List.of(mf.id(),ifp.id()),List.of(mf.originalUrl(),ifp.originalUrl()),parent.aiModel(),parent.reviewedAt(),parent.reviewer(),null,hash,false,false,parent.issues(),claims,"COMPLETE",0,parent.editionDate());
+        store.updateArticle(withContext,store.article(parent.id()).version());
+        var result=new Pipeline(store,new CorrectingAi(),config(),Fixtures.CLOCK).run(false);assertEquals(1,result.published());assertTrue(result.errors().isEmpty());
+        assertEquals(withContext,store.article(parent.id()).value());
+    }
     static Config config() {return Config.from(Map.of("APP_STORAGE_CONNECTION_STRING","UseDevelopmentStorage=true","AUTO_PUBLISH_ENABLED","true"));}
     static class CorrectingAi implements Ai {
         final MockAi mock=new MockAi();int corrections;boolean badCorrection;
