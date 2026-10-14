@@ -25,7 +25,7 @@ class AiContractTest {
         assertFalse(Validation.grounded(malicious,List.of(r),new Verification(true,false,List.of())).passed());
     }
     @Test void allStructuredSchemasRejectAdditionalProperties() throws Exception {
-        for(String name:List.of("analysis","draft","verification","editor","research")) {
+        for(String name:List.of("analysis","draft","verification","editor","research","research-plan","researched-draft")) {
             try(var stream=getClass().getResourceAsStream("/schemas/"+name+".json")) {
                 assertNotNull(stream);var schema=Json.tree(new String(stream.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8));
                 assertFalse(schema.path("additionalProperties").asBoolean()); assertTrue(schema.path("required").isArray());

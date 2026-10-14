@@ -29,12 +29,22 @@ public final class Validation {
             mapped.add(plain(c.text())); Release source = byId.get(c.sourceId());
             if (source == null || !Normalize.text(source.title()+" "+source.body()).contains(Normalize.text(c.evidence()))) { issues.add("Evidence is not present in the cited source: " + c.sourceId()); continue; }
             if (!plain(article).contains(plain(c.text()))) issues.add("Claim map contains text absent from the draft.");
+            // A comparison paragraph can cite several exact original excerpts. Only valid citations
+            // attached to this same paragraph contribute numbers; unrelated paragraphs cannot lend evidence.
+            String paragraphEvidence=d.claims().stream().filter(other -> other.text().equals(c.text()))
+                .filter(other -> byId.containsKey(other.sourceId()) && Normalize.text(byId.get(other.sourceId()).title()+" "+byId.get(other.sourceId()).body()).contains(Normalize.text(other.evidence())))
+                .map(Claim::evidence).collect(java.util.stream.Collectors.joining(" "));
             var numbers = Pattern.compile("\\d+(?:[.,]\\d+)*").matcher(c.text());
-            Set<String> evidenceNumbers = new HashSet<>(); var evidence = Pattern.compile("\\d+(?:[.,]\\d+)*").matcher(c.evidence());
+            Set<String> evidenceNumbers = new HashSet<>(); var evidence = Pattern.compile("\\d+(?:[.,]\\d+)*").matcher(paragraphEvidence);
             while(evidence.find()) evidenceNumbers.add(evidence.group().replace(',','.'));
             while(numbers.find()) if(!evidenceNumbers.contains(numbers.group().replace(',','.'))) issues.add("Numeric claim is not grounded: " + numbers.group());
             var quotes = Pattern.compile("[„\"“]([^„\"“”]{8,})[\"“”]").matcher(c.text());
-            while(quotes.find()) if(!Normalize.text(source.body()).contains(Normalize.text(quotes.group(1)))) issues.add("Quotation absent from source.");
+            while(quotes.find()) {
+                String quotation=Normalize.text(quotes.group(1));
+                boolean present=d.claims().stream().filter(other -> other.text().equals(c.text())).anyMatch(other ->
+                    byId.containsKey(other.sourceId()) && Normalize.text(byId.get(other.sourceId()).body()).contains(quotation) && Normalize.text(other.evidence()).contains(quotation));
+                if(!present)issues.add("Quotation absent from cited evidence.");
+            }
         }
         // Every title, perex and body paragraph must have a claim/evidence mapping, including uncertainty statements.
         for (String paragraph : article.split("\\n\\s*\\n")) {

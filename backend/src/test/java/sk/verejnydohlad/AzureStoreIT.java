@@ -11,6 +11,14 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @EnabledIfSystemProperty(named="storage.integration",matches="true")
 class AzureStoreIT {
+    @Test void undatedResearchOriginalRemainsReusableWithoutInventingPublicationTime() {
+        var store=new AzureStore(Config.from(Map.of("APP_STORAGE_CONNECTION_STRING","UseDevelopmentStorage=true")));store.initialize(List.of());
+        var fixture=Fixtures.release("undated-research-"+UUID.randomUUID());
+        var r=new Release(fixture.id(),fixture.sourceId(),fixture.organization(),fixture.originalUrl(),Instant.EPOCH,fixture.collectedAt(),fixture.title(),fixture.body(),fixture.contentHash(),fixture.blobPath());
+        assertTrue(store.collect(r));store.releaseStatus(r,"CONTEXT",null);
+        assertTrue(store.recent(Fixtures.CLOCK.instant().minusSeconds(1),100).stream().anyMatch(item -> item.equals(r)));
+        assertEquals(Instant.EPOCH,store.release(r.id()).publishedAt());assertEquals("CONTEXT",store.releaseStatus(r));
+    }
     static final Map<String,Set<String>> existingKeys=new HashMap<>();
     static com.azure.data.tables.models.TableEntity existingBudget;
     static com.azure.data.tables.TableClient table(String name) {
@@ -35,19 +43,19 @@ class AzureStoreIT {
         }
         if(existingBudget!=null)table("Sources").upsertEntity(existingBudget);
     }
-    @Test void fivePublicationLimitIncludesManualPublishingAndLatestEditionReturnsAllFive() {
+    @Test void threePublicationLimitIncludesManualPublishingAndLatestEditionReturnsAllThree() {
         var store=new AzureStore(Config.from(Map.of("APP_STORAGE_CONNECTION_STRING","UseDevelopmentStorage=true")));store.initialize(List.of());
-        var clock=Clock.offset(Fixtures.CLOCK,Duration.ofDays(10));var editor=new Editorial(store,clock,5);String lastId=null;
-        for(int i=0;i<6;i++) {
+        var clock=Clock.offset(Fixtures.CLOCK,Duration.ofDays(10));var editor=new Editorial(store,clock,3);String lastId=null;
+        for(int i=0;i<4;i++) {
             var r=Fixtures.release("five-publications-"+UUID.randomUUID());store.collect(r);
             var d=new MockAi().generate(List.of(r));String id=Normalize.hash(r.id()),hash=Normalize.hash(d.markdown()),path="drafts/"+id+"/"+hash+".md";
             var a=new Article(id,"synthetic-"+id.substring(0,16),d.title(),d.perex(),d.category(),Fixtures.CLOCK.instant(),Fixtures.CLOCK.instant(),null,Status.DRAFT,path,
                 List.of(r.id()),List.of(r.originalUrl()),"mock-offline-synthetic",null,null,null,hash,true,false,List.of(),d.claims(),"COMPLETE",i,"2026-10-12");
             store.putBlob("articles",path,d.markdown());store.createArticle(a);editor.approve(id,"Integration reviewer",false);
-            if(i<5)editor.publish(id);else {assertThrows(IllegalStateException.class,() -> editor.publish(id));lastId=id;}
+            if(i<3)editor.publish(id);else {assertThrows(IllegalStateException.class,() -> editor.publish(id));lastId=id;}
         }
         assertEquals(Status.REVIEWED,store.article(lastId).value().status());
-        assertEquals("2026-10-22",store.latest().date());assertEquals(5,store.latest().articles().size()+1);
+        assertEquals("2026-10-22",store.latest().date());assertEquals(3,store.latest().articles().size()+1);
         editor.publish(store.latest().featured().id()); // Retry is idempotent even when the cap is full.
     }
     @Test void researchArchiveLoadsOriginalBodiesEvenAfterSourcesAreConsumed() {

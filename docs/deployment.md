@@ -223,7 +223,7 @@ az deployment group create --name newspaper-editor-model --resource-group AI --t
 if ($LASTEXITCODE -ne 0) { throw 'Editor model deployment failed; keep automatic publication disabled.' }
 
 # Enable only after the updated backend/frontend and editor model are deployed:
-az functionapp config appsettings set --resource-group verejny-dohlad --name verejnydohlad-wny6o5yct2uf2 --settings AZURE_OPENAI_EDITOR_DEPLOYMENT=gpt-4.1 AUTO_PUBLISH_ENABLED=true MAX_ARTICLES_PER_DAY=8 MAX_PUBLISHED_ARTICLES_PER_DAY=5 MAX_PRESS_RELEASES_PER_RUN=40 MAX_AI_CALLS_PER_DAY=40 --output none
+az functionapp config appsettings set --resource-group verejny-dohlad --name verejnydohlad-wny6o5yct2uf2 --settings AZURE_OPENAI_EDITOR_DEPLOYMENT=gpt-4.1 AUTO_PUBLISH_ENABLED=true RESEARCH_FLOW_ENABLED=true MAX_ARTICLES_PER_DAY=6 MAX_PUBLISHED_ARTICLES_PER_DAY=3 MAX_PRESS_RELEASES_PER_RUN=40 MAX_AI_CALLS_PER_DAY=40 --output none
 if ($LASTEXITCODE -ne 0) { throw 'Automatic editor settings update failed.' }
 Invoke-RestMethod 'https://verejnydohlad-wny6o5yct2uf2.azurewebsites.net/api/articles'
 ```

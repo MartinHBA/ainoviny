@@ -5,19 +5,21 @@ import java.util.Map;
 public record Config(String storageConnection, String accountName, String aiMode, String endpoint, String deployment,
                      String apiKey, int maxArticles, int maxPublished, int maxReleases, int maxCalls, int maxTokens, int aiTimeout,
                      int minScore, String origin, double inputPrice, double outputPrice,
-                     boolean autoPublish, String editorDeployment, double editorInputPrice, double editorOutputPrice) {
+                     boolean autoPublish, String editorDeployment, double editorInputPrice, double editorOutputPrice, boolean researchFlow) {
     public static Config environment() { return from(System.getenv()); }
     public static Config from(Map<String, String> env) {
         var c = new Config(env.getOrDefault("APP_STORAGE_CONNECTION_STRING", ""), env.getOrDefault("STORAGE_ACCOUNT_NAME", ""),
             env.getOrDefault("AI_MODE", "mock"), env.getOrDefault("AZURE_OPENAI_ENDPOINT", ""),
             env.getOrDefault("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-mini"), env.getOrDefault("AZURE_OPENAI_API_KEY", ""),
-            number(env, "MAX_ARTICLES_PER_DAY", 8, 0, 8), number(env, "MAX_PUBLISHED_ARTICLES_PER_DAY", 5, 0, 5), number(env, "MAX_PRESS_RELEASES_PER_RUN", 40, 1, 50),
+            // Accept older deployed settings during rollout, but enforce the new six/three ceilings.
+            Math.min(6,number(env, "MAX_ARTICLES_PER_DAY", 6, 0, 8)), Math.min(3,number(env, "MAX_PUBLISHED_ARTICLES_PER_DAY", 3, 0, 5)), number(env, "MAX_PRESS_RELEASES_PER_RUN", 40, 1, 50),
             number(env, "MAX_AI_CALLS_PER_DAY", 40, 0, 100), number(env, "MAX_TOKENS_PER_ARTICLE", 2200, 256, 4000),
             number(env, "AI_REQUEST_TIMEOUT", 45, 5, 60), number(env, "MIN_NEWS_SCORE", 65, 0, 100),
             env.getOrDefault("ALLOWED_ORIGIN", "http://localhost:5173"),
             price(env, "AI_INPUT_USD_PER_MILLION"), price(env, "AI_OUTPUT_USD_PER_MILLION"),
             flag(env, "AUTO_PUBLISH_ENABLED"), env.getOrDefault("AZURE_OPENAI_EDITOR_DEPLOYMENT", "gpt-4.1"),
-            price(env, "EDITOR_INPUT_USD_PER_MILLION"), price(env, "EDITOR_OUTPUT_USD_PER_MILLION"));
+            price(env, "EDITOR_INPUT_USD_PER_MILLION"), price(env, "EDITOR_OUTPUT_USD_PER_MILLION"),
+            flag(env, "RESEARCH_FLOW_ENABLED", env.getOrDefault("AI_MODE","mock").equals("azure")));
         if (!c.aiMode.equals("mock") && !c.aiMode.equals("azure")) throw new IllegalArgumentException("AI_MODE must be mock or azure");
         if (c.aiMode.equals("azure")) {
             var uri = java.net.URI.create(c.endpoint);
@@ -32,7 +34,10 @@ public record Config(String storageConnection, String accountName, String aiMode
         return c;
     }
     private static boolean flag(Map<String,String> env, String key) {
-        String value=env.getOrDefault(key,"false");
+        return flag(env,key,false);
+    }
+    private static boolean flag(Map<String,String> env, String key, boolean fallback) {
+        String value=env.getOrDefault(key,Boolean.toString(fallback));
         if (!value.equals("true") && !value.equals("false")) throw new IllegalArgumentException(key+" must be true or false");
         return Boolean.parseBoolean(value);
     }

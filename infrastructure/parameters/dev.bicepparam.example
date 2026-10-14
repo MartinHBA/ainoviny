@@ -8,8 +8,9 @@ param openAiDeployment = 'gpt-4.1-mini'
 param openAiEditorDeployment = 'gpt-4.1'
 // This instance has the approved editor deployment; preserve automatic publication on redeploy.
 param autoPublishEnabled = true
-param maxArticlesPerDay = 8
-param maxPublishedArticlesPerDay = 5
+param researchFlowEnabled = true
+param maxArticlesPerDay = 6
+param maxPublishedArticlesPerDay = 3
 param maxPressReleasesPerRun = 40
 param maxAiCallsPerDay = 40
 // Supply existing Application Insights securely during deployment, or provision an optional

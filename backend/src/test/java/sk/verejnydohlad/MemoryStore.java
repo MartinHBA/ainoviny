@@ -18,7 +18,7 @@ class MemoryStore implements Store {
     public boolean collect(Release r) { if(releases.containsKey(r.id())||releases.values().stream().anyMatch(s -> s.contentHash().equals(r.contentHash())))return false; releases.put(r.id(),r);putBlob("sources",r.blobPath(),Json.write(r));statuses.put(r.id(),"PENDING");return true; }
     public Release release(String id) { return Objects.requireNonNull(releases.get(id)); }
     public List<Release> pending(int max) { return releases.values().stream().filter(r -> Set.of("PENDING","ANALYZED").contains(statuses.get(r.id()))).limit(max).toList(); }
-    public List<Release> recent(Instant since,int max) { return releases.values().stream().filter(r -> !r.publishedAt().isBefore(since)).sorted(Comparator.comparing(Release::publishedAt).reversed()).limit(max).toList(); }
+    public List<Release> recent(Instant since,int max) { return releases.values().stream().filter(r -> !r.publishedAt().isBefore(since) || r.publishedAt().equals(Instant.EPOCH) && !r.collectedAt().isBefore(since)).sorted(Comparator.comparing(Release::publishedAt).reversed()).limit(max).toList(); }
     public void releaseStatus(Release r,String s,Analysis a) {statuses.put(r.id(),s);if(a!=null)rankings.put(r.id(),a);}
     public Analysis analysis(Release r) {return rankings.get(r.id());}
     public String releaseStatus(Release r) {return statuses.get(r.id());}

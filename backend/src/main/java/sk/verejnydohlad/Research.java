@@ -28,7 +28,7 @@ final class Research {
         return Arrays.stream(normalized.split("[^a-z]+"))
             .filter(t -> t.length()>=5).map(t -> t.substring(0,Math.min(6,t.length()))).filter(t -> !STOP.contains(t)).collect(Collectors.toSet());
     }
-    static boolean multiSource(List<Release> sources) { return sources.stream().map(Release::sourceId).distinct().count()>=2; }
+    static boolean multiSource(List<Release> sources) { return sources.stream().map(s -> ResearchRegistry.group(s.sourceId())).distinct().count()>=2; }
     static void validate(ResearchBrief brief,List<Release> sources) {
         if(brief==null || brief.question()==null || brief.question().length()>600 || brief.findings()==null || brief.findings().size()>8 ||
             brief.limitations()==null || brief.leads()==null || brief.limitations().size()>8 || brief.leads().size()>8 ||
@@ -38,18 +38,18 @@ final class Research {
         for(var finding:brief.findings()) {
             if(finding==null || finding.text()==null || finding.text().length()<5 || finding.text().length()>1200 || !byId.containsKey(finding.sourceId()))
                 throw new IllegalArgumentException("Invalid research finding");
-            String evidence=SourceEvidence.excerpts(byId.get(finding.sourceId())).stream().filter(e -> e.id().equals(finding.evidenceId())).map(SourceEvidence.Excerpt::text).findFirst()
+            String evidence=SourceEvidence.allExcerpts(byId.get(finding.sourceId())).stream().filter(e -> e.id().equals(finding.evidenceId())).map(SourceEvidence.Excerpt::text).findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("Unknown research evidence identifier"));
             var numbers=java.util.regex.Pattern.compile("\\d+(?:[.,]\\d+)*");var originals=new HashSet<String>();var matcher=numbers.matcher(evidence);
             while(matcher.find()) originals.add(matcher.group().replace(',','.'));
             matcher=numbers.matcher(finding.text());while(matcher.find()) if(!originals.contains(matcher.group().replace(',','.'))) throw new IllegalArgumentException("Ungrounded research number");
         }
-        if(brief.viable() && (!multiSource(sources) || brief.findings().stream().map(f -> byId.get(f.sourceId()).sourceId()).distinct().count()<2 || brief.question().isBlank()))
+        if(brief.viable() && (!multiSource(sources) || brief.findings().stream().map(f -> ResearchRegistry.group(byId.get(f.sourceId()).sourceId())).distinct().count()<2 || brief.question().isBlank()))
             throw new IllegalArgumentException("Analytical brief needs evidence from different institutions");
     }
     static void coverage(Draft draft,ResearchBrief brief,List<Release> sources) {
         if(brief!=null && brief.viable()) {
-            var byId=sources.stream().collect(Collectors.toMap(Release::id,Release::sourceId));
+            var byId=sources.stream().collect(Collectors.toMap(Release::id,s -> ResearchRegistry.group(s.sourceId())));
             if(draft.claims().stream().map(c -> byId.get(c.sourceId())).filter(Objects::nonNull).distinct().count()<2)
                 throw new IllegalArgumentException("Analytical draft omitted its second source");
         }
@@ -64,7 +64,7 @@ final class Research {
                 if(!"Ungrounded research number".equals(invalid.getMessage())) throw invalid;
             }
         }
-        var institutions=sources.stream().collect(Collectors.toMap(Release::id,Release::sourceId));
+        var institutions=sources.stream().collect(Collectors.toMap(Release::id,s -> ResearchRegistry.group(s.sourceId())));
         boolean viable=brief.viable() && retained.stream().map(f -> institutions.get(f.sourceId())).distinct().count()>=2;
         var cleaned=new ResearchBrief(viable,brief.sensitive(),brief.question(),List.copyOf(retained),brief.limitations(),brief.leads());
         validate(cleaned,sources);return cleaned;

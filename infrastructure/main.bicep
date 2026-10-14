@@ -17,6 +17,8 @@ param autoPublishEnabled bool = false
 @description('Production requires azure. mock is strictly for offline development.')
 @allowed(['azure'])
 param aiMode string = 'azure'
+@description('Initial private concept, targeted official-source research and one writer revision before verification.')
+param researchFlowEnabled bool = true
 @description('Existing Application Insights connection string. No additional monitoring account is created by default.')
 @secure()
 param applicationInsightsConnectionString string = ''
@@ -24,12 +26,12 @@ param applicationInsightsConnectionString string = ''
 param createApplicationInsights bool = false
 param existingLogAnalyticsWorkspaceId string = ''
 @description('Maximum daily concept attempts, including rejected or interrupted drafts.')
-@maxValue(8)
+@maxValue(6)
 @minValue(0)
-param maxArticlesPerDay int = 8
-@maxValue(5)
+param maxArticlesPerDay int = 6
+@maxValue(3)
 @minValue(0)
-param maxPublishedArticlesPerDay int = 5
+param maxPublishedArticlesPerDay int = 3
 @maxValue(50)
 @minValue(1)
 param maxPressReleasesPerRun int = 40
@@ -129,6 +131,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'FUNCTIONS_WORKER_RUNTIME', value: 'java' }
         { name: 'STORAGE_ACCOUNT_NAME', value: storage.name }
         { name: 'AI_MODE', value: aiMode }
+          { name: 'RESEARCH_FLOW_ENABLED', value: string(researchFlowEnabled) }
         { name: 'AZURE_OPENAI_ENDPOINT', value: openAiEndpoint }
         { name: 'AZURE_OPENAI_DEPLOYMENT', value: openAiDeployment }
         { name: 'AZURE_OPENAI_EDITOR_DEPLOYMENT', value: openAiEditorDeployment }

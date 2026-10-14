@@ -13,6 +13,23 @@ import sk.verejnydohlad.Models.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class AzureAiTest {
+    @Test void assistantPlanAndEvaluationUseStrongModelAndRewriteUsesWriterWithoutPrivateLeads() {
+        var http=new OfflineHttp();var ai=new AzureAi(config(),http);var a=ResearchFlowTest.source("adapter-primary","mf-sr");var b=ResearchFlowTest.source("adapter-independent","rrz-sk");
+        var sources=List.of(a,b);var initial=new MockAi().generate(List.of(a));var plan=new ResearchPlan("Čo uvádza RRZ?",List.of("rozpočet"),List.of("rrz-sk","ifp-sr"));
+        http.payload=response(Json.write(plan),"stop",null);assertEquals(plan,ai.plan(initial,List.of(a)));
+        assertEquals("chief-editor",Json.tree(http.requestBody()).path("model").asText());
+        assertEquals("research-plan",Json.tree(http.requestBody()).path("response_format").path("json_schema").path("name").asText());
+        var brief=ResearchTest.brief(sources,false);http.payload=response(Json.write(brief),"stop",null);assertEquals(brief,ai.research(initial,sources,List.of("Document version needs checking.")));
+        var evaluation=Json.tree(http.requestBody());assertEquals("chief-editor",evaluation.path("model").asText());
+        var input=Json.tree(evaluation.path("messages").get(1).path("content").asText());assertEquals(1,input.path("retrievalGaps").size());
+        assertEquals("mf-sr",input.path("sources").get(0).path("institutionGroup").asText());assertEquals(a.body(),input.path("sources").get(0).path("body").asText());
+        var title=new ResearchedClaim(initial.title(),List.of(new EvidenceRef(a.id(),"body-0")));
+        var perex=new ResearchedClaim(initial.perex(),title.citations());var paragraph=new ResearchedClaim(initial.markdown(),title.citations());
+        http.payload=response(Json.write(new ResearchedGeneration(title,perex,initial.category(),List.of(paragraph))),"stop",null);
+        assertEquals(initial,ai.rewrite(initial,sources,brief));var rewrite=Json.tree(http.requestBody());assertEquals("writer-mini",rewrite.path("model").asText());
+        assertEquals("researched-draft",rewrite.path("response_format").path("json_schema").path("name").asText());assertFalse(http.requestBody().contains("Private unanswered question."));
+        assertTrue(rewrite.path("response_format").path("json_schema").path("strict").asBoolean());
+    }
     static Config config() { return Config.from(Map.of("AI_MODE","azure","AZURE_OPENAI_ENDPOINT","https://test.openai.azure.com/",
         "AZURE_OPENAI_DEPLOYMENT","writer-mini","AZURE_OPENAI_EDITOR_DEPLOYMENT","chief-editor","AZURE_OPENAI_API_KEY","offline-test-placeholder")); }
     static String response(String content,String finish,String refusal) {

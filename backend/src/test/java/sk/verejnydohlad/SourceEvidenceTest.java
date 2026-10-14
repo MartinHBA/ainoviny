@@ -6,6 +6,27 @@ import sk.verejnydohlad.Models.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class SourceEvidenceTest {
+    @Test void comparisonParagraphUsesBothOriginalsButCannotBorrowNumbersFromAnotherParagraph() {
+        var a=ResearchTest.document("multi-a","mf-sr","Syntetický rozpočet 2027","Ministerstvo uvádza deficit 3 percentá. "+"Syntetický finančný podklad. ".repeat(5));
+        var b=ResearchTest.document("multi-b","rrz-sk","Syntetické hodnotenie 2027","RRZ odhaduje deficit 4 percentá. "+"Syntetický nezávislý podklad. ".repeat(5));
+        var refs=List.of(new EvidenceRef(a.id(),"body-0"),new EvidenceRef(b.id(),"body-0"));
+        var title=new ResearchedClaim("Syntetické porovnanie rozpočtu",refs);
+        var comparison=new ResearchedClaim("Ministerstvo uvádza deficit 3 percentá, kým RRZ odhaduje 4 percentá. Ide o dve odlišné hodnotenia syntetického rozpočtu.",refs);
+        var draft=SourceEvidence.assemble(new ResearchedGeneration(title,comparison,"Verejné peniaze",List.of(comparison)),List.of(a,b));
+        assertTrue(Validation.grounded(draft,List.of(a,b),new Verification(true,false,List.of())).passed());assertEquals(6,draft.claims().size());
+        var unsupported=new ResearchedClaim(comparison.text(),List.of(refs.getFirst()));
+        var invalid=SourceEvidence.assemble(new ResearchedGeneration(title,comparison,"Verejné peniaze",List.of(new ResearchedClaim(unsupported.text()+" Samostatné tvrdenie.",unsupported.citations()))),List.of(a,b));
+        assertFalse(Validation.grounded(invalid,List.of(a,b),new Verification(true,false,List.of())).passed());
+    }
+    @Test void targetedResearchCanCiteRelevantContiguousEvidenceBeyondWriterFirstTenThousandCharacters() {
+        String body="Úvodná všeobecná informácia. ".repeat(500)+" Záverečné fiškálne riziká dlhu dosahujú 77 percent podľa syntetického podkladu.";
+        var source=ResearchTest.document("late-evidence","rrz-sk","Syntetický podklad",body);
+        var excerpt=SourceEvidence.researchExcerpts(source,"fiškálne riziká dlhu").stream().filter(e -> e.text().contains("77")).findFirst().orElseThrow();
+        assertTrue(source.body().contains(excerpt.text()));assertFalse(SourceEvidence.excerpts(source).stream().anyMatch(e -> e.text().contains("77")));
+        var claim=new ResearchedClaim("Syntetický podklad uvádza fiškálne riziká 77 percent.",List.of(new EvidenceRef(source.id(),excerpt.id())));
+        var draft=SourceEvidence.assemble(new ResearchedGeneration(claim,claim,"Verejné peniaze",List.of(new ResearchedClaim(claim.text()+" Ide o syntetickú skúšku neskoršej pasáže dokumentu.",claim.citations()))),List.of(source));
+        assertTrue(Validation.grounded(draft,List.of(source),new Verification(true,false,List.of())).passed());
+    }
     @Test void numericalCitationCanUseAnotherProvidedContiguousExcerptFromSameDocument() {
         var fixture=Fixtures.release("numeric-selection");String text="Parlament schválil rozpočet na roky 2027 až 2029.";
         String body=text+" "+"Schválený rozpočet obsahuje verejné výdavky a príjmy. ".repeat(80);

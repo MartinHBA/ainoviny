@@ -7,9 +7,19 @@ import sk.verejnydohlad.Models.*;
 final class SourceEvidence {
     record Excerpt(String id,String text) {}
     static List<Excerpt> excerpts(Release source) {
+        return excerpts(source,10000);
+    }
+    static List<Excerpt> allExcerpts(Release source) {return excerpts(source,100000);}
+    static List<Excerpt> researchExcerpts(Release source,String question) {
+        var all=allExcerpts(source);var selected=new LinkedHashSet<Excerpt>();
+        all.stream().limit(3).forEach(selected::add);
+        all.stream().sorted(Comparator.<Excerpt>comparingInt(e -> overlap(question,e.text())).reversed().thenComparing(Excerpt::id)).limit(9).forEach(selected::add);
+        return List.copyOf(selected);
+    }
+    private static List<Excerpt> excerpts(Release source,int max) {
         var result=new ArrayList<Excerpt>();
         if(source.title().length()>=10 && source.title().length()<=1800) result.add(new Excerpt("title",source.title()));
-        String body=source.body().substring(0,Math.min(10000,source.body().length()));
+        String body=source.body().substring(0,Math.min(max,source.body().length()));
         for(int start=0,index=0;start<body.length();index++) {
             int end=Math.min(start+1200,body.length());
             if(end<body.length()) {
@@ -49,6 +59,28 @@ final class SourceEvidence {
         }
         Draft draft=new Draft(claims.get(0).text(),claims.get(1).text(),generated.category(),
             claims.subList(2,claims.size()).stream().map(Claim::text).collect(java.util.stream.Collectors.joining("\n\n")),List.copyOf(claims));
+        Validation.draft(draft);return draft;
+    }
+    static Draft assemble(ResearchedGeneration generated,List<Release> sources) {
+        if(generated==null || generated.title()==null || generated.perex()==null || generated.paragraphs()==null || generated.paragraphs().isEmpty() || generated.paragraphs().size()>8)
+            throw new IllegalArgumentException("Incomplete researched generation");
+        var byId=new HashMap<String,Map<String,String>>();
+        for(var s:sources) {var excerpts=new HashMap<String,String>();allExcerpts(s).forEach(e -> excerpts.put(e.id(),e.text()));byId.put(s.id(),excerpts);}
+        var fields=new ArrayList<ResearchedClaim>();fields.add(generated.title());fields.add(generated.perex());fields.addAll(generated.paragraphs());
+        var claims=new ArrayList<Claim>();
+        for(var field:fields) {
+            if(field==null || field.text()==null || field.text().contains("\n") || field.text().contains("\r") || field.citations()==null || field.citations().isEmpty() || field.citations().size()>3 ||
+                new HashSet<>(field.citations()).size()!=field.citations().size())throw new IllegalArgumentException("Invalid researched claim");
+            for(var ref:field.citations()) {
+                if(ref==null)throw new IllegalArgumentException("Invalid researched citation");
+                String evidence=byId.getOrDefault(ref.sourceId(),Map.of()).get(ref.evidenceId());
+                if(evidence==null)throw new IllegalArgumentException("Unknown source evidence identifier");
+                // Persist one existing Claim record per citation, preserving compatibility with stored articles.
+                claims.add(new Claim(field.text(),ref.sourceId(),evidence));
+            }
+        }
+        var draft=new Draft(generated.title().text(),generated.perex().text(),generated.category(),
+            generated.paragraphs().stream().map(ResearchedClaim::text).collect(java.util.stream.Collectors.joining("\n\n")),List.copyOf(claims));
         Validation.draft(draft);return draft;
     }
     private static boolean supportsNumbers(String text,String evidence) {

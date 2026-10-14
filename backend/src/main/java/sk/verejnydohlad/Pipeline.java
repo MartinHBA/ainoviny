@@ -10,13 +10,18 @@ import sk.verejnydohlad.Models.*;
 public final class Pipeline {
     public record CorrectionInput(String parentId,String inputHash,String model,Instant createdAt) {}
     private static final Logger LOG=Logger.getLogger(Pipeline.class.getName());
-    private final Store store; private final Ai ai; private final Config config; private final Clock clock;
-    public Pipeline(Store store,Ai ai,Config config,Clock clock) { this.store=store; this.ai=ai; this.config=config; this.clock=clock; }
+    private final Store store; private final Ai ai; private final Config config; private final Clock clock;private final ResearchLookup lookup;
+    public Pipeline(Store store,Ai ai,Config config,Clock clock) {this(store,ai,config,clock,config.aiMode().equals("azure")?new OfficialResearch():ResearchLookup.archiveOnly());}
+    Pipeline(Store store,Ai ai,Config config,Clock clock,ResearchLookup lookup) { this.store=store; this.ai=ai; this.config=config; this.clock=clock;this.lookup=lookup; }
     public RunResult run(boolean collect) {
         Instant start=clock.instant(); var errors=new ArrayList<String>(); int collected=0, drafts=0, published=0, rejected=0;
         try (Store.Guard guard=store.lock()) {
             Instant deadline=Instant.now().plusSeconds(480);
             if(collect) collected=new Collector().collect(SourceRegistry.load(),store,config.maxReleases(),guard,Instant.now().plusSeconds(120),errors);
+            if(config.researchFlow() && config.autoPublish()) {
+                var ready=new AutomaticEditor(store,ai,config,clock).run(guard,deadline,errors);
+                published+=ready.published();rejected+=ready.rejected();
+            }
             try {
                 var existing=store.editorial();
                 var primary=new HashSet<String>();existing.forEach(a -> primary.addAll(SourceInputs.seeds(a)));
@@ -50,7 +55,14 @@ public final class Pipeline {
                 Set<String> claimed=new HashSet<>();
                 for(Article a:incomplete) {
                     claimed.addAll(SourceInputs.seeds(a));
-                    try { if(process(a,a.sourceIds().stream().map(store::release).toList(),guard,deadline)) drafts++; }
+                    try {
+                        if(process(a,a.sourceIds().stream().map(store::release).toList(),guard,deadline)) {
+                            drafts++;
+                            if(config.researchFlow() && config.autoPublish()) {
+                                var ready=new AutomaticEditor(store,ai,config,clock).run(guard,deadline,errors);published+=ready.published();rejected+=ready.rejected();
+                            }
+                        }
+                    }
                     catch(Exception e) { LOG.log(Level.WARNING,"Failed to resume article "+a.id(),e);errors.add("resume "+a.id()+": "+errorDescription(e)); }
                 }
                 var pending=store.pending(config.maxReleases());
@@ -83,24 +95,31 @@ public final class Pipeline {
                     if(Instant.now().isAfter(deadline)) break;
                     var seeds=seedGroup.stream().filter(r -> !consumed.contains(r.id())).limit(6).toList();
                     if(seeds.isEmpty()) continue;
-                    var group=Research.related(seeds,archive);
+                    var group=config.researchFlow()?seeds:Research.related(seeds,archive);
                     String id=Normalize.hash(seeds.stream().map(Release::id).sorted().reduce((a,b) -> a+"|"+b).orElseThrow());
                     if(store.article(id)!=null) continue;
                     guard.check(); String day=day();
                     if(!store.reserveArticle(day,id,config.maxArticles())) break;
                     var initial=new Article(id,"sprava-"+id.substring(0,16),"Pripravuje sa", "",store.analysis(group.getFirst()).category(),clock.instant(),null,null,Status.DRAFT,
                         "",group.stream().map(Release::id).toList(),group.stream().map(Release::originalUrl).distinct().toList(),ai.model(),
-                        null,null,null,"",false,false,List.of(),List.of(),"GENERATING",store.budget(day).articleIds().indexOf(id),day);
+                        null,null,null,"",false,false,List.of(),List.of(),config.researchFlow()?"DRAFTING":"GENERATING",store.budget(day).articleIds().indexOf(id),day);
                     guard.check(); if(!store.createArticle(initial)) continue;
                     seeds.forEach(r -> consumed.add(r.id()));
-                    try { if(process(initial,group,guard,deadline)) drafts++; }
+                    try {
+                        if(process(initial,group,guard,deadline)) {
+                            drafts++;
+                            if(config.researchFlow() && config.autoPublish()) {
+                                var ready=new AutomaticEditor(store,ai,config,clock).run(guard,deadline,errors);published+=ready.published();rejected+=ready.rejected();
+                            }
+                        }
+                    }
                     catch(Exception e) { LOG.log(Level.WARNING,"Failed to draft article "+id,e);errors.add("draft "+id+": "+errorDescription(e)); }
                 }
             } catch(Exception e) { errors.add("pipeline: "+e.getClass().getSimpleName()); }
             // An unrelated ranking/generation failure must not strand a cached, reviewed publication.
             if(config.autoPublish()) {
                 var result=new AutomaticEditor(store,ai,config,clock).run(guard,deadline,errors);
-                published=result.published(); rejected=result.rejected();
+                published+=result.published(); rejected+=result.rejected();
             }
         } catch(Exception e) { errors.add("pipeline: "+e.getClass().getSimpleName()); }
         var result=new RunResult(start,clock.instant(),collected,drafts,published,rejected,List.copyOf(errors)); store.run(result); return result;
@@ -109,8 +128,18 @@ public final class Pipeline {
         guard.check(); if(!store.reserveArticle(day(),initial.id(),config.maxArticles())) return false;
         var stored=store.article(initial.id()); Article a=stored.value();
         if(a.phase().equals("COMPLETE")) return false;
-        Draft draft;
-        if(a.phase().equals("CORRECTING")) {
+        Draft draft;List<Release> verificationSources=group;
+        if(a.phase().equals("DRAFTING")) {
+            var outcome=ResearchFlow.run(a,group,store,ai,lookup,guard,deadline,new ResearchFlow.Paid(){
+                public <T> T call(Supplier<T> action){return paid(action,guard,deadline);}
+            });
+            draft=outcome.draft();verificationSources=outcome.sources();
+            String checkpoint="drafts/"+a.id()+"/generated.json";guard.check();store.putBlob("articles",checkpoint,Json.write(draft));
+            var next=new Article(a.id(),Normalize.slug(draft.title())+"-"+a.id().substring(0,12),draft.title(),draft.perex(),draft.category(),a.createdAt(),clock.instant(),null,Status.DRAFT,
+                checkpoint,verificationSources.stream().map(Release::id).toList(),verificationSources.stream().map(Release::originalUrl).distinct().toList(),a.aiModel(),
+                null,null,null,"",false,outcome.brief().sensitive(),List.of(),draft.claims(),"VERIFYING",a.editorialOrder(),a.editionDate());
+            guard.check();store.updateArticle(next,stored.version());stored=store.article(a.id());a=stored.value();
+        } else if(a.phase().equals("CORRECTING")) {
             var input=Json.read(store.blob("articles","corrections/"+a.id()+"/input.json"),CorrectionInput.class);
             var parent=store.article(input.parentId()).value();
             String hash=Normalize.hash(Json.write(List.of(parent,group,ai.editorModel(),SourceInputs.CORRECTION_POLICY)));
@@ -161,7 +190,8 @@ public final class Pipeline {
             guard.check(); store.updateArticle(next,stored.version()); stored=store.article(a.id()); a=stored.value();
         } else draft=Json.read(store.blob("articles",a.blobPath()),Draft.class);
         Draft finalDraft=draft;
-        Verification verification=Validation.grounded(draft,group,paid(() -> ai.verify(finalDraft,group),guard,deadline));
+        List<Release> finalSources=verificationSources;
+        Verification verification=Validation.grounded(draft,finalSources,paid(() -> ai.verify(finalDraft,finalSources),guard,deadline));
         if(a.sensitive()) verification=new Verification(verification.passed(),true,verification.issues());
         String hash=Normalize.hash(draft.markdown()), path="drafts/"+a.id()+"/"+hash+".md";
         guard.check(); store.putBlob("articles",path,draft.markdown());
@@ -181,7 +211,8 @@ public final class Pipeline {
         var safe=Set.of("Invalid research brief","Invalid research finding","Unknown research evidence identifier","Ungrounded research number",
             "Analytical brief needs evidence from different institutions","Analytical draft omitted its second source","AI refusal or incomplete response",
             "Invalid JSON for ResearchBrief","Research needs 2-6 documents from different institutions","Unknown source evidence identifier",
-            "Incomplete article generation","Invalid AI draft structure","Invalid claim map");
+            "Incomplete article generation","Invalid AI draft structure","Invalid claim map","Invalid research plan","Unknown research site",
+            "Researched draft omitted a relevant institution","Research input budget exceeded","Invalid researched claim","Invalid researched citation");
         return error.getClass().getSimpleName()+(message!=null && safe.contains(message)?": "+message:"");
     }
 }

@@ -17,7 +17,7 @@ class PipelineTest {
     }
     @Test void meaningfulStoryQuotaNeverExceedsEight() {
         var store=new MemoryStore();for(int i=0;i<10;i++)store.collect(Fixtures.release("fixture-"+i));
-        var result=new Pipeline(store,new MockAi(),Fixtures.config(),Fixtures.CLOCK).run(false);assertEquals(8,result.drafts());assertEquals(8,store.editorial().size());
+        var result=new Pipeline(store,new MockAi(),Fixtures.config(),Fixtures.CLOCK).run(false);assertEquals(6,result.drafts());assertEquals(6,store.editorial().size());
     }
     @Test void realSourcesDoNotGenerateMockNews() {
         var store=new MemoryStore();var r=Fixtures.release("real");store.collect(new Release(r.id(),r.sourceId(),r.organization(),r.originalUrl(),r.publishedAt(),r.collectedAt(),"Real press release",r.body(),r.contentHash(),r.blobPath()));

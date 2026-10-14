@@ -14,6 +14,10 @@ public final class Models {
     public record Draft(String title, String perex, String category, String markdown, List<Claim> claims) {}
     public record GenerationClaim(String text, String sourceId, String evidenceId) {}
     public record Generation(GenerationClaim title, GenerationClaim perex, String category, List<GenerationClaim> paragraphs) {}
+    public record EvidenceRef(String sourceId,String evidenceId) {}
+    public record ResearchedClaim(String text,List<EvidenceRef> citations) {}
+    public record ResearchedGeneration(ResearchedClaim title,ResearchedClaim perex,String category,List<ResearchedClaim> paragraphs) {}
+    public record ResearchPlan(String question,List<String> queries,List<String> sourceIds) {}
     public record ResearchBrief(boolean viable, boolean sensitive, String question, List<GenerationClaim> findings,
                                 List<String> limitations, List<String> leads) {}
     public record Verification(boolean passed, boolean sensitive, List<String> issues) {}

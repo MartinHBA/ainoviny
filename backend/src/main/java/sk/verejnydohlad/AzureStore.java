@@ -96,7 +96,8 @@ public final class AzureStore implements Store {
     }
     public List<Release> recent(Instant since,int limit) {
         var result=new ArrayList<Release>();
-        String filter="PartitionKey eq 'press' and RowKey ge 'url|' and RowKey lt 'url}' and publishedAt ge '"+since+"'";
+        String filter="PartitionKey eq 'press' and RowKey ge 'url|' and RowKey lt 'url}' and (publishedAt ge '"+since+
+            "' or (publishedAt eq '"+Instant.EPOCH+"' and collectedAt ge '"+since+"'))";
         for(var entity:query(releases,filter,limit)) {
             var metadata=Json.read((String)entity.getProperty("payload"),Release.class);
             result.add(Json.read(blob("sources",metadata.blobPath()),Release.class));

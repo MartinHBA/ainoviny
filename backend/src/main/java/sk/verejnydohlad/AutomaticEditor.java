@@ -9,7 +9,7 @@ import sk.verejnydohlad.Models.*;
 /** One bounded chief-editor call per content/source revision. No tools or autonomous retry loop. */
 public final class AutomaticEditor {
     private static final Logger LOG=Logger.getLogger(AutomaticEditor.class.getName());
-    static final String REVIEWER_PREFIX="AI editor: ", POLICY_VERSION="chief-editor-v1";
+    static final String REVIEWER_PREFIX="AI editor: ", POLICY_VERSION="chief-editor-v2-multi-citation";
     public record Audit(String inputHash,String model,String policyVersion,Instant reviewedAt,EditorDecision decision) {}
     public record Result(int published,int rejected) {}
     private final Store store; private final Ai ai; private final Config config; private final Clock clock;
