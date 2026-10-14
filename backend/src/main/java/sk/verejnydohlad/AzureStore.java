@@ -144,11 +144,18 @@ public final class AzureStore implements Store {
         articles.updateEntityWithResponse(e, TableEntityUpdateMode.REPLACE, true, Duration.ofSeconds(20), null);
     }
     public void publish(Article a, String version) {
-        var canonical = articleEntity(a, "id|" + a.id()); canonical.addProperty("odata.etag", version);
+        publish(a,version,"scheduled");
+    }
+    public void publish(Article a,String version,String scope) {
+        if(!scope.equals("scheduled") && !RunScope.manualLabel(scope))throw new IllegalArgumentException("Invalid publication scope");
+        var canonical = articleEntity(a, "id|" + a.id()).addProperty("publicationScope",scope); canonical.addProperty("odata.etag", version);
         String key = publicKey(a);
         articles.submitTransaction(List.of(new TableTransactionAction(TableTransactionActionType.UPDATE_REPLACE, canonical, true),
-            new TableTransactionAction(TableTransactionActionType.CREATE, articleEntity(a, key)),
-            new TableTransactionAction(TableTransactionActionType.CREATE, articleEntity(a, "slug|" + a.slug()))));
+            new TableTransactionAction(TableTransactionActionType.CREATE, articleEntity(a, key).addProperty("publicationScope",scope)),
+            new TableTransactionAction(TableTransactionActionType.CREATE, articleEntity(a, "slug|" + a.slug()).addProperty("publicationScope",scope))));
+    }
+    public String publicationScope(String id) {
+        var e=get(articles,NEWSROOM,"id|"+id);return e==null || e.getProperty("publicationScope")==null?"scheduled":(String)e.getProperty("publicationScope");
     }
     private static String publicKey(Article a) { return "pub|" + String.format(Locale.ROOT, "%019d", Long.MAX_VALUE - a.publishedAt().toEpochMilli()) + "|" + a.id(); }
     public List<Article> editorial() {
@@ -212,7 +219,8 @@ public final class AzureStore implements Store {
             .addProperty("feedUrl",s.feedUrl()).addProperty("sourceType",s.sourceType()).addProperty("enabled",s.enabled())
             .addProperty("lastCheckedAt",at.toString()),TableEntityUpdateMode.MERGE,Duration.ofSeconds(20),null);
     }
-    public void run(RunResult r) { sources.createEntity(new TableEntity("ops", "run|" + r.startedAt() + "|" + UUID.randomUUID()).addProperty("payload", Json.write(r))); }
+    public void run(RunResult r) {run(r,"scheduled");}
+    public void run(RunResult r,String scope) { sources.createEntity(new TableEntity("ops", "run|" + r.startedAt() + "|" + UUID.randomUUID()).addProperty("payload", Json.write(r)).addProperty("scope",scope)); }
     private static PagedIterable<TableEntity> query(TableClient t, String filter, int pageSize) {
         return t.listEntities(new ListEntitiesOptions().setFilter(filter).setTop(pageSize), Duration.ofSeconds(30), null);
     }

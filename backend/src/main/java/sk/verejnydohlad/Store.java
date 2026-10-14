@@ -24,6 +24,11 @@ public interface Store {
     boolean createArticle(Article article);
     void updateArticle(Article article, String version);
     void publish(Article article, String version);
+    default void publish(Article article,String version,String scope) {
+        if(!scope.equals("scheduled"))throw new UnsupportedOperationException("Store does not support independent manual publication");
+        publish(article,version);
+    }
+    default String publicationScope(String articleId){return "scheduled";}
     List<Article> editorial();
     Page published(int size, String cursor, String category);
     Article bySlug(String slug);
@@ -33,4 +38,5 @@ public interface Store {
     boolean reserveArticle(String date, String id, int max);
     void sourceChecked(Source source, java.time.Instant at);
     void run(RunResult result);
+    default void run(RunResult result,String scope){run(result);}
 }

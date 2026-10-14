@@ -54,9 +54,35 @@ An automatic preliminary rejection with a numerical evidence-mapping error can c
 
 The correction uses `gpt-4.1` in a fresh writing call with the rejected draft, errors and original excerpt identifiers. It must remove unsupported claims or select sufficient exact evidence; no check is waived. The corrected draft receives a fresh first verification and a fresh final editor decision in another conversation. These correction and final-review calls use the same stronger deployment but separate conversations; the primary generation deployment remains `gpt-4.1-mini`. Existing analytical two-institution coverage is retained. Private `corrections/{successorId}/input.json` binds the immutable parent, full source inputs, correction policy and model; a stored generated checkpoint avoids repeating the correction after a crash. The source metadata marks only primary topic inputs consumed. Context remains reusable and cannot suppress a separate news topic. The pipeline also restores incorrectly consumed legacy context conservatively using the original topic ID.
 
+## Ad hoc run outside daily limits
+
+The scheduled timer retains the Bratislava-day ledger and daily 6/3/40 limits. Explicit ad hoc execution has its own `budget|adhoc|UUID` ledger in `Sources.ops`, with the same configured limits applied per manual run. It can work after scheduled calls, concepts or publications are exhausted. Its calls/concepts do not mutate the daily ledger; its publications are tagged `publicationScope=adhoc|UUID` on canonical/public/slug rows in the same atomic Table transaction, and do not reduce scheduled publication capacity. Older untagged publications remain classified as scheduled. Ordinary standalone human CLI `publish` remains part of the daily allowance.
+
+The Azure native admin endpoint requires `_master` in `x-functions-key`. Use an explicit run ID so retrying a request continues the same bounded run instead of creating another budget:
+
+```powershell
+$runId = [guid]::NewGuid().ToString()
+$key = $null
+try {
+    $key = az functionapp keys list --resource-group verejny-dohlad --name verejnydohlad-wny6o5yct2uf2 --query masterKey --output tsv
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($key)) { throw 'Master key unavailable.' }
+    $body = @{ input = "adhoc:$runId" } | ConvertTo-Json -Compress
+    $response = Invoke-WebRequest -UseBasicParsing -Method Post `
+        -Uri 'https://verejnydohlad-wny6o5yct2uf2.azurewebsites.net/admin/functions/MorningEdition' `
+        -Headers @{ 'x-functions-key' = $key } -ContentType 'application/json' `
+        -Body $body -TimeoutSec 60
+    "HTTP $($response.StatusCode); runId=$runId"
+}
+finally { $key = $null }
+```
+
+HTTP 202 acknowledges the request; the pipeline completes asynchronously. Find the actual result and any errors in `MorningEdition` logs (`scope`, `result`) or the `Sources.ops` run entry with its `scope` property. `{"input":"adhoc"}` generates a fresh ID, and the earlier `manual-after-update` marker is also recognized as ad hoc. Normal TimerInfo JSON stays scheduled even if it contains the word adhoc. Invalid explicit IDs are rejected. The admin endpoint is Azure's platform endpoint, not a new anonymous application HTTP route.
+
+CLI `editorial.ps1 run` is now ad hoc; `editorial.ps1 run UUID` resumes that manual budget. A global lease still prevents overlapping scheduled/manual runs. Content IDs, immutable evidence, approvals and publication transactions are unchanged, so re-running cannot duplicate terminal stories or force unsupported publication. A manual run can complete existing private work; older charged/reserved daily attempts remain counted. If a later scheduled run continues unfinished work, those new attempts count in that scheduled day's ledger. All paid manual calls remain chargeable. There is no aggregate daily ceiling across arbitrary new manual IDs; only authorized administrators can invoke this path.
+
 ## Optional manual recovery
 
-No administrative HTTP endpoint is deployed. Use the local Java CLI as a trusted editor with Azure RBAC, or with Azurite for development. `scripts/editorial/editorial.ps1` compiles Java and builds a classpath on first use, loads ignored local settings, and invokes `Cli` directly without a shell-built command. Use `-SkipBuild` only after an unchanged successful build. Explicit environment values override local settings.
+Individual editorial recovery operations use the local Java CLI with Azure RBAC, or Azurite for development. Whole-run invocation also has the authenticated Azure platform endpoint described above. `scripts/editorial/editorial.ps1` compiles Java and builds a classpath on first use, loads ignored local settings, and invokes `Cli` directly without a shell-built command. Use `-SkipBuild` only after an unchanged successful build. Explicit environment values override local settings.
 
 ## Commands
 

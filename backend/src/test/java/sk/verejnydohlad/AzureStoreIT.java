@@ -11,6 +11,22 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @EnabledIfSystemProperty(named="storage.integration",matches="true")
 class AzureStoreIT {
+    @Test void manualBudgetAndPublicationScopeAreIndependentAndCommitWithAllPublicIndexes() {
+        var store=new AzureStore(Config.from(Map.of("APP_STORAGE_CONNECTION_STRING","UseDevelopmentStorage=true")));store.initialize(List.of());
+        var scope=RunScope.adHoc();var clock=Clock.offset(Fixtures.CLOCK,Duration.ofDays(-1));var before=store.budget("2026-10-11");
+        assertTrue(store.reserveCall(scope.budgetKey(clock),1));assertFalse(store.reserveCall(scope.budgetKey(clock),1));assertEquals(before,store.budget("2026-10-11"));
+        var r=Fixtures.release("manual-sdk-"+UUID.randomUUID());store.collect(r);var d=new MockAi().generate(List.of(r));
+        String id=Normalize.hash(r.id()),hash=Normalize.hash(d.markdown()),path="drafts/"+id+"/"+hash+".md";
+        var a=new Article(id,"synthetic-"+id.substring(0,16),d.title(),d.perex(),d.category(),clock.instant(),clock.instant(),null,Status.DRAFT,path,
+            List.of(r.id()),List.of(r.originalUrl()),"mock-offline-synthetic",null,null,null,hash,true,false,List.of(),d.claims(),"COMPLETE",0,"2026-10-11");
+        store.putBlob("articles",path,d.markdown());store.createArticle(a);var editor=new Editorial(store,clock,3,scope);editor.approve(id,"Manual scope integration editor",false);editor.publish(id);
+        assertEquals(scope.label(),store.publicationScope(id));assertFalse(new Editorial(store,clock,1).publicationLimitReached());
+        var canonical=table("Articles").getEntity("editorial","id|"+id);var slug=table("Articles").getEntity("editorial","slug|"+a.slug());
+        assertEquals(scope.label(),canonical.getProperty("publicationScope"));assertEquals(scope.label(),slug.getProperty("publicationScope"));
+        assertNotNull(new PublicApi(store).detail(a.slug()));
+        store.run(new RunResult(clock.instant(),clock.instant(),0,0,1,0,List.of()),scope.label());
+        assertTrue(table("Sources").listEntities(new com.azure.data.tables.models.ListEntitiesOptions().setFilter("PartitionKey eq 'ops' and scope eq '"+scope.label()+"'"),null,null).iterator().hasNext());
+    }
     @Test void undatedResearchOriginalRemainsReusableWithoutInventingPublicationTime() {
         var store=new AzureStore(Config.from(Map.of("APP_STORAGE_CONNECTION_STRING","UseDevelopmentStorage=true")));store.initialize(List.of());
         var fixture=Fixtures.release("undated-research-"+UUID.randomUUID());

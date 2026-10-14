@@ -13,7 +13,10 @@ public final class Cli {
         App app=App.instance(); Store store=app.store; var editor=new Editorial(store,Clock.systemUTC());
         switch(args[0]) {
             case "init" -> store.initialize(SourceRegistry.load());
-            case "run" -> System.out.println(Json.write(app.pipeline.run(true)));
+            case "run" -> {
+                var scope=args.length>1?new RunScope(arg(args,1)):RunScope.adHoc();
+                System.out.println(Json.write(Map.of("scope",scope.label(),"result",app.pipeline.run(true,scope))));
+            }
             case "collect" -> { try(var guard=store.lock()) { var errors=new ArrayList<String>(); int n=new Collector().collect(SourceRegistry.load(),store,app.config.maxReleases(),guard,Instant.now().plusSeconds(120),errors); System.out.println(Json.write(Map.of("collected",n,"errors",errors))); } }
             case "list" -> store.editorial().stream().filter(a -> a.status()!=Status.PUBLISHED).forEach(a -> System.out.println(a.id()+" "+a.status()+" "+a.phase()+" grounded="+a.factCheckPassed()+" "+a.title()));
             case "inspect", "export" -> {

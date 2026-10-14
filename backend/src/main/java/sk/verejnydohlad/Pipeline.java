@@ -10,16 +10,19 @@ import sk.verejnydohlad.Models.*;
 public final class Pipeline {
     public record CorrectionInput(String parentId,String inputHash,String model,Instant createdAt) {}
     private static final Logger LOG=Logger.getLogger(Pipeline.class.getName());
-    private final Store store; private final Ai ai; private final Config config; private final Clock clock;private final ResearchLookup lookup;
+    private final Store store; private final Ai ai; private final Config config; private final Clock clock;private final ResearchLookup lookup;private final RunScope scope;
     public Pipeline(Store store,Ai ai,Config config,Clock clock) {this(store,ai,config,clock,config.aiMode().equals("azure")?new OfficialResearch():ResearchLookup.archiveOnly());}
-    Pipeline(Store store,Ai ai,Config config,Clock clock,ResearchLookup lookup) { this.store=store; this.ai=ai; this.config=config; this.clock=clock;this.lookup=lookup; }
+    Pipeline(Store store,Ai ai,Config config,Clock clock,ResearchLookup lookup) {this(store,ai,config,clock,lookup,RunScope.scheduled());}
+    private Pipeline(Store store,Ai ai,Config config,Clock clock,ResearchLookup lookup,RunScope scope) { this.store=store; this.ai=ai; this.config=config; this.clock=clock;this.lookup=lookup;this.scope=scope; }
+    public RunResult runAdHoc(boolean collect){return run(collect,RunScope.adHoc());}
+    RunResult run(boolean collect,RunScope scope){return new Pipeline(store,ai,config,clock,lookup,scope).run(collect);}
     public RunResult run(boolean collect) {
         Instant start=clock.instant(); var errors=new ArrayList<String>(); int collected=0, drafts=0, published=0, rejected=0;
         try (Store.Guard guard=store.lock()) {
             Instant deadline=Instant.now().plusSeconds(480);
             if(collect) collected=new Collector().collect(SourceRegistry.load(),store,config.maxReleases(),guard,Instant.now().plusSeconds(120),errors);
             if(config.researchFlow() && config.autoPublish()) {
-                var ready=new AutomaticEditor(store,ai,config,clock).run(guard,deadline,errors);
+                var ready=new AutomaticEditor(store,ai,config,clock,scope).run(guard,deadline,errors);
                 published+=ready.published();rejected+=ready.rejected();
             }
             try {
@@ -37,14 +40,14 @@ public final class Pipeline {
                 for(var parent:existing) {
                     if(!config.autoPublish() || !SourceInputs.correctionCandidate(parent) || store.article(SourceInputs.correctionId(parent.id()))!=null)continue;
                     if(SourceInputs.seeds(parent).stream().map(store::release).noneMatch(r -> !r.publishedAt().isBefore(clock.instant().minus(Duration.ofDays(7)))))continue;
-                    String id=SourceInputs.correctionId(parent.id());guard.check();if(!store.reserveArticle(day(),id,config.maxArticles()))break;
+                    String id=SourceInputs.correctionId(parent.id());guard.check();if(!store.reserveArticle(budgetKey(),id,config.maxArticles()))break;
                     var sources=parent.sourceIds().stream().map(store::release).toList();
                     String hash=Normalize.hash(Json.write(List.of(parent,sources,ai.editorModel(),SourceInputs.CORRECTION_POLICY)));
                     String inputPath="corrections/"+id+"/input.json";
                     if(store.optionalBlob("articles",inputPath)==null) {guard.check();store.putBlob("articles",inputPath,Json.write(new CorrectionInput(parent.id(),hash,ai.editorModel(),clock.instant())));}
                     var correction=new Article(id,"sprava-"+id.substring(0,16),"Pripravuje sa oprava","",parent.category(),clock.instant(),null,null,Status.DRAFT,"",
                         parent.sourceIds(),parent.sourceUrls(),ai.model().startsWith("mock")?ai.model():ai.editorModel(),null,null,null,"",false,false,List.of(),List.of(),"CORRECTING",
-                        store.budget(day()).articleIds().indexOf(id),day());guard.check();store.createArticle(correction);
+                        store.budget(budgetKey()).articleIds().indexOf(id),day());guard.check();store.createArticle(correction);
                 }
                 // Repair a crash between saving a completed draft and marking its input material consumed.
                 var incomplete=new ArrayList<Article>();
@@ -59,7 +62,7 @@ public final class Pipeline {
                         if(process(a,a.sourceIds().stream().map(store::release).toList(),guard,deadline)) {
                             drafts++;
                             if(config.researchFlow() && config.autoPublish()) {
-                                var ready=new AutomaticEditor(store,ai,config,clock).run(guard,deadline,errors);published+=ready.published();rejected+=ready.rejected();
+                                var ready=new AutomaticEditor(store,ai,config,clock,scope).run(guard,deadline,errors);published+=ready.published();rejected+=ready.rejected();
                             }
                         }
                     }
@@ -99,17 +102,17 @@ public final class Pipeline {
                     String id=Normalize.hash(seeds.stream().map(Release::id).sorted().reduce((a,b) -> a+"|"+b).orElseThrow());
                     if(store.article(id)!=null) continue;
                     guard.check(); String day=day();
-                    if(!store.reserveArticle(day,id,config.maxArticles())) break;
+                    if(!store.reserveArticle(budgetKey(),id,config.maxArticles())) break;
                     var initial=new Article(id,"sprava-"+id.substring(0,16),"Pripravuje sa", "",store.analysis(group.getFirst()).category(),clock.instant(),null,null,Status.DRAFT,
                         "",group.stream().map(Release::id).toList(),group.stream().map(Release::originalUrl).distinct().toList(),ai.model(),
-                        null,null,null,"",false,false,List.of(),List.of(),config.researchFlow()?"DRAFTING":"GENERATING",store.budget(day).articleIds().indexOf(id),day);
+                        null,null,null,"",false,false,List.of(),List.of(),config.researchFlow()?"DRAFTING":"GENERATING",store.budget(budgetKey()).articleIds().indexOf(id),day);
                     guard.check(); if(!store.createArticle(initial)) continue;
                     seeds.forEach(r -> consumed.add(r.id()));
                     try {
                         if(process(initial,group,guard,deadline)) {
                             drafts++;
                             if(config.researchFlow() && config.autoPublish()) {
-                                var ready=new AutomaticEditor(store,ai,config,clock).run(guard,deadline,errors);published+=ready.published();rejected+=ready.rejected();
+                                var ready=new AutomaticEditor(store,ai,config,clock,scope).run(guard,deadline,errors);published+=ready.published();rejected+=ready.rejected();
                             }
                         }
                     }
@@ -118,14 +121,14 @@ public final class Pipeline {
             } catch(Exception e) { errors.add("pipeline: "+e.getClass().getSimpleName()); }
             // An unrelated ranking/generation failure must not strand a cached, reviewed publication.
             if(config.autoPublish()) {
-                var result=new AutomaticEditor(store,ai,config,clock).run(guard,deadline,errors);
+                var result=new AutomaticEditor(store,ai,config,clock,scope).run(guard,deadline,errors);
                 published+=result.published(); rejected+=result.rejected();
             }
         } catch(Exception e) { errors.add("pipeline: "+e.getClass().getSimpleName()); }
-        var result=new RunResult(start,clock.instant(),collected,drafts,published,rejected,List.copyOf(errors)); store.run(result); return result;
+        var result=new RunResult(start,clock.instant(),collected,drafts,published,rejected,List.copyOf(errors)); store.run(result,scope.label()); return result;
     }
     private boolean process(Article initial,List<Release> group,Store.Guard guard,Instant deadline) {
-        guard.check(); if(!store.reserveArticle(day(),initial.id(),config.maxArticles())) return false;
+        guard.check(); if(!store.reserveArticle(budgetKey(),initial.id(),config.maxArticles())) return false;
         var stored=store.article(initial.id()); Article a=stored.value();
         if(a.phase().equals("COMPLETE")) return false;
         Draft draft;List<Release> verificationSources=group;
@@ -201,10 +204,11 @@ public final class Pipeline {
     }
     private <T> T paid(Supplier<T> action,Store.Guard guard,Instant deadline) {
         guard.check(); if(Instant.now().plusSeconds(config.aiTimeout()+15).isAfter(deadline)) throw new IllegalStateException("Pipeline time budget reached");
-        if(!store.reserveCall(day(),config.maxCalls())) throw new IllegalStateException("Daily AI call budget reached");
+        if(!store.reserveCall(budgetKey(),config.maxCalls())) throw new IllegalStateException("Execution AI call budget reached");
         return action.get();
     }
     private String day() { return clock.instant().atZone(ZoneId.of("Europe/Bratislava")).toLocalDate().toString(); }
+    private String budgetKey(){return scope.budgetKey(clock);}
     private static String errorDescription(Exception error) {
         String message=error.getMessage();
         // Only known fixed adapter/validation messages enter operational metadata, never arbitrary SDK data.

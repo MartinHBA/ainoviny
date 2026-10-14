@@ -20,7 +20,8 @@ public final class Functions {
     }
     @FunctionName("MorningEdition")
     public void timer(@TimerTrigger(name="timer",schedule="%DAILY_SCHEDULE%") String timer,ExecutionContext context) {
-        var result=App.instance().pipeline.run(true); context.getLogger().info(Json.write(result));
+        var scope=RunScope.timer(timer);
+        var result=App.instance().pipeline.run(true,scope);context.getLogger().info(Json.write(Map.of("scope",scope.label(),"result",result)));
     }
     private HttpResponseMessage response(HttpRequestMessage<?> request,ExecutionContext context,Supplier<Object> action) {
         try {

@@ -12,8 +12,9 @@ public final class AutomaticEditor {
     static final String REVIEWER_PREFIX="AI editor: ", POLICY_VERSION="chief-editor-v2-multi-citation";
     public record Audit(String inputHash,String model,String policyVersion,Instant reviewedAt,EditorDecision decision) {}
     public record Result(int published,int rejected) {}
-    private final Store store; private final Ai ai; private final Config config; private final Clock clock;
-    public AutomaticEditor(Store store,Ai ai,Config config,Clock clock) { this.store=store;this.ai=ai;this.config=config;this.clock=clock; }
+    private final Store store; private final Ai ai; private final Config config; private final Clock clock;private final RunScope scope;
+    public AutomaticEditor(Store store,Ai ai,Config config,Clock clock) {this(store,ai,config,clock,RunScope.scheduled());}
+    AutomaticEditor(Store store,Ai ai,Config config,Clock clock,RunScope scope) { this.store=store;this.ai=ai;this.config=config;this.clock=clock;this.scope=scope; }
 
     Result run(Store.Guard guard,Instant deadline,List<String> errors) {
         int published=0,rejected=0;
@@ -22,11 +23,11 @@ public final class AutomaticEditor {
             .sorted(Comparator.comparing(Article::createdAt).thenComparing(Article::id)).toList();
         for(var candidate:candidates) {
             if(Instant.now().isAfter(deadline)) break;
-            var editorial=new Editorial(store,clock,config.maxPublished());
+            var editorial=new Editorial(store,clock,config.maxPublished(),scope);
             if(editorial.publicationLimitReached()) break;
             try {
                 guard.check();
-                String day=clock.instant().atZone(ZoneId.of("Europe/Bratislava")).toLocalDate().toString();
+                String day=scope.budgetKey(clock);
                 if(!store.reserveArticle(day,candidate.id(),config.maxArticles())) continue;
                 var old=store.article(candidate.id()); Article a=old.value();
                 Draft draft=new Draft(a.title(),a.perex(),a.category(),store.blob("articles",a.blobPath()),a.claims());

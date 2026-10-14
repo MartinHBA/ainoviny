@@ -9,6 +9,7 @@ class MemoryStore implements Store {
     final Map<String,Release> releases=new LinkedHashMap<>(); final Map<String,Analysis> rankings=new HashMap<>();
     final Map<String,Versioned<Article>> articles=new HashMap<>(); final Map<String,Article> publicArticles=new HashMap<>();
     final Map<String,Budget> budgets=new HashMap<>(); boolean locked=false, failPublish=false; int version=0;
+    final Map<String,String> publicationScopes=new HashMap<>();final List<String> runScopes=new ArrayList<>();
     public void initialize(List<Source> s) {}
     public Guard lock() { if(locked) throw new IllegalStateException("locked"); locked=true; return new Guard(){public void check(){if(!locked)throw new IllegalStateException("lost");}public void close(){locked=false;}}; }
     public void putBlob(String c,String p,String v) { String key=c+"/"+p; if(blobs.containsKey(key)&&!blobs.get(key).equals(v))throw new IllegalStateException("immutable"); blobs.put(key,v); }
@@ -26,6 +27,8 @@ class MemoryStore implements Store {
     public boolean createArticle(Article a) {if(articles.containsKey(a.id()))return false;articles.put(a.id(),new Versioned<>(a,""+(++version)));return true;}
     public void updateArticle(Article a,String v) {if(!articles.get(a.id()).version().equals(v))throw new IllegalStateException("stale");articles.put(a.id(),new Versioned<>(a,""+(++version)));}
     public void publish(Article a,String v) {if(failPublish)throw new IllegalStateException("injected publication failure");updateArticle(a,v);publicArticles.put(a.slug(),a);}
+    public void publish(Article a,String v,String scope){publish(a,v);publicationScopes.put(a.id(),scope);}
+    public String publicationScope(String id){return publicationScopes.getOrDefault(id,"scheduled");}
     public List<Article> editorial() {return articles.values().stream().map(Versioned::value).toList();}
     public Page published(int size,String cursor,String category) {return new Page(publicArticles.values().stream().filter(a -> a.status()==Status.PUBLISHED && (category==null||category.equals(a.category()))).sorted(Comparator.comparing(Article::publishedAt).reversed()).limit(size).map(Summary::of).toList(),null);}
     public Article bySlug(String slug) {return publicArticles.get(slug);}
@@ -35,4 +38,5 @@ class MemoryStore implements Store {
     public boolean reserveArticle(String day,String id,int max) {var b=budget(day);if(b.articleIds().contains(id))return true;if(b.articleIds().size()>=max)return false;var ids=new ArrayList<>(b.articleIds());ids.add(id);budgets.put(day,new Budget(b.calls(),ids));return true;}
     public void sourceChecked(Source s,Instant at) {}
     public void run(RunResult r) {}
+    public void run(RunResult r,String scope){run(r);runScopes.add(scope);}
 }

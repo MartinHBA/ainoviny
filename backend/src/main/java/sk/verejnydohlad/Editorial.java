@@ -6,13 +6,16 @@ import java.util.*;
 import sk.verejnydohlad.Models.*;
 
 public final class Editorial {
-    private final Store store; private final Clock clock; private final int maxPublished;
+    private final Store store; private final Clock clock; private final int maxPublished;private final RunScope scope;
     public Editorial(Store store,Clock clock) { this(store,clock,Config.environment().maxPublished()); }
-    public Editorial(Store store,Clock clock,int maxPublished) { this.store=store; this.clock=clock; this.maxPublished=maxPublished; }
+    public Editorial(Store store,Clock clock,int maxPublished) {this(store,clock,maxPublished,RunScope.scheduled());}
+    Editorial(Store store,Clock clock,int maxPublished,RunScope scope) { this.store=store; this.clock=clock; this.maxPublished=maxPublished;this.scope=scope; }
     boolean publicationLimitReached() {
         String day=clock.instant().atZone(ZoneId.of("Europe/Bratislava")).toLocalDate().toString();
-        return store.editorial().stream().filter(a -> a.status()==Status.PUBLISHED && a.publishedAt()!=null &&
-            a.publishedAt().atZone(ZoneId.of("Europe/Bratislava")).toLocalDate().toString().equals(day)).count()>=maxPublished;
+        return store.editorial().stream().filter(a -> a.status()==Status.PUBLISHED && a.publishedAt()!=null)
+            .filter(a -> scope.manual()?scope.label().equals(store.publicationScope(a.id())):
+                a.publishedAt().atZone(ZoneId.of("Europe/Bratislava")).toLocalDate().toString().equals(day) && !RunScope.manualLabel(store.publicationScope(a.id())))
+            .count()>=maxPublished;
     }
     public void edit(String id,Draft draft) {
         Validation.id(id); Validation.draft(draft);
@@ -76,7 +79,7 @@ public final class Editorial {
         String path="published/"+date+"/"+a.id()+".md";
         guard.check(); store.putBlob("articles",path,content);
         guard.check(); store.publish(Models.withEdition(a.state(Status.PUBLISHED,a.reviewedAt(),a.reviewer(),a.approvedHash(),now,path),
-            now.atZone(ZoneId.of("Europe/Bratislava")).toLocalDate().toString()),old.version());
+            now.atZone(ZoneId.of("Europe/Bratislava")).toLocalDate().toString()),old.version(),scope.label());
     }
     static String approvalHash(Article a,String markdown) {
         return Normalize.hash(Json.write(List.of(a.title(),a.perex(),a.category(),a.sourceUrls(),a.claims(),a.aiModel(),markdown)));

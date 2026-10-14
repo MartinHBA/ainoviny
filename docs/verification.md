@@ -1,5 +1,13 @@
 # Verification record
 
+## Independent ad hoc budgets — 14 October 2026
+
+The budget-scope update passed **95 offline Java tests** and **8 actual SDK/Azurite integration tests**. The eight new manual-run tests exercise an already exhausted daily call/concept/publication allowance; unchanged daily ledgers after manual work; separate scheduled publication capacity after manual publications; persisted six/three/40 per-run ceilings and deduplicated retries with the same UUID; cached approval recovery after a failed publication; manual call exhaustion; global lease and sensitive-content exclusions; explicit native timer marker parsing; and the full researched flow including final-editor reservations in the manual ledger.
+
+The new SDK case proves independent `budget|adhoc|UUID` CAS reservations, publication scope committed with canonical/slug indexes, continued public API compatibility, scheduled-cap exclusion of a manual publication and scope-tagged operational summaries. The stored Article and RunResult JSON formats remain unchanged, so old records continue to load and untagged publications count as scheduled. Verification used synthetic offline inputs and local emulated Storage; no paid AI run or production publication was invoked for testing.
+
+Native `adhoc:UUID` input selects the independent manual scope; `adhoc` and the earlier `manual-after-update` marker generate a fresh ID. Scheduled TimerInfo stays on its daily ledger. CLI `run` uses a manual scope, with an optional UUID for resumption. The existing HTTPS Azure admin endpoint and master-key authorization are retained. Previous daily counts are not erased or refunded; all fresh manual IDs have additional chargeable per-run budgets. README and editorial workflow explain the invocation and retry behavior.
+
 ## Post-concept research assistant and six/three limits — 14 October 2026
 
 The new flow passed **87 offline Java tests**, **7 actual Azure SDK/Azurite integration tests**, and **1 explicitly enabled public-network integration test**. Maven `verify` and Function packaging passed; the final institutional-group compatibility adjustment also passed the targeted citation-correction suite. The main Bicep template and copied example parameter file compiled without deployment. Verification made no paid AI calls and did not write to production Storage or publish articles.
