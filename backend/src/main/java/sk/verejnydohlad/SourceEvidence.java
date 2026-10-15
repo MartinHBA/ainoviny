@@ -81,12 +81,31 @@ final class SourceEvidence {
         }
         var draft=new Draft(generated.title().text(),generated.perex().text(),generated.category(),
             generated.paragraphs().stream().map(ResearchedClaim::text).collect(java.util.stream.Collectors.joining("\n\n")),List.copyOf(claims));
-        Validation.draft(draft);return draft;
+        Validation.draft(draft);return align(draft,sources);
+    }
+    /** Repair an excerpt selection within its already cited original, before semantic verification.
+     * Other citations of this exact paragraph remain available; unrelated paragraphs never contribute. */
+    static Draft align(Draft draft,List<Release> sources) {
+        var originals=new HashMap<String,Release>();sources.forEach(s->originals.put(s.id(),s));
+        var claims=new ArrayList<>(draft.claims());
+        for(int i=0;i<claims.size();i++) {
+            var claim=claims.get(i);var source=originals.get(claim.sourceId());
+            if(source==null || !Normalize.text(source.title()+" "+source.body()).contains(Normalize.text(claim.evidence())))continue;
+            final int index=i;
+            String other=java.util.stream.IntStream.range(0,claims.size()).filter(j->j!=index).mapToObj(claims::get)
+                .filter(c->c.text().equals(claim.text())).filter(c->originals.containsKey(c.sourceId()) &&
+                    Normalize.text(originals.get(c.sourceId()).title()+" "+originals.get(c.sourceId()).body()).contains(Normalize.text(c.evidence())))
+                .map(Claim::evidence).collect(java.util.stream.Collectors.joining(" "));
+            if(supportsNumbers(claim.text(),claim.evidence()+" "+other))continue;
+            String replacement=allExcerpts(source).stream().map(Excerpt::text).filter(e->supportsNumbers(claim.text(),e+" "+other))
+                .sorted(Comparator.<String>comparingInt(e->overlap(claim.text(),e)).reversed().thenComparing(Comparator.naturalOrder())).findFirst().orElse(null);
+            if(replacement!=null)claims.set(i,new Claim(claim.text(),claim.sourceId(),replacement));
+        }
+        var aligned=new Draft(draft.title(),draft.perex(),draft.category(),draft.markdown(),List.copyOf(claims));
+        Validation.draft(aligned);return aligned;
     }
     private static boolean supportsNumbers(String text,String evidence) {
-        var pattern=java.util.regex.Pattern.compile("\\d+(?:[.,]\\d+)*");var found=new HashSet<String>();var matcher=pattern.matcher(evidence);
-        while(matcher.find())found.add(matcher.group().replace(',','.'));matcher=pattern.matcher(text);
-        while(matcher.find())if(!found.contains(matcher.group().replace(',','.')))return false;return true;
+        return EvidenceNumbers.missing(text,evidence).isEmpty();
     }
     private static int overlap(String text,String evidence) {
         var words=new HashSet<>(Arrays.asList(Normalize.text(text).toLowerCase(Locale.ROOT).split("[^\\p{L}\\p{N}]+")));

@@ -40,9 +40,7 @@ final class Research {
                 throw new IllegalArgumentException("Invalid research finding");
             String evidence=SourceEvidence.allExcerpts(byId.get(finding.sourceId())).stream().filter(e -> e.id().equals(finding.evidenceId())).map(SourceEvidence.Excerpt::text).findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("Unknown research evidence identifier"));
-            var numbers=java.util.regex.Pattern.compile("\\d+(?:[.,]\\d+)*");var originals=new HashSet<String>();var matcher=numbers.matcher(evidence);
-            while(matcher.find()) originals.add(matcher.group().replace(',','.'));
-            matcher=numbers.matcher(finding.text());while(matcher.find()) if(!originals.contains(matcher.group().replace(',','.'))) throw new IllegalArgumentException("Ungrounded research number");
+            if(!EvidenceNumbers.missing(finding.text(),evidence).isEmpty())throw new IllegalArgumentException("Ungrounded research number");
         }
         if(brief.viable() && (!multiSource(sources) || brief.findings().stream().map(f -> ResearchRegistry.group(byId.get(f.sourceId()).sourceId())).distinct().count()<2 || brief.question().isBlank()))
             throw new IllegalArgumentException("Analytical brief needs evidence from different institutions");

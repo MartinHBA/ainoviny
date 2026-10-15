@@ -34,10 +34,7 @@ public final class Validation {
             String paragraphEvidence=d.claims().stream().filter(other -> other.text().equals(c.text()))
                 .filter(other -> byId.containsKey(other.sourceId()) && Normalize.text(byId.get(other.sourceId()).title()+" "+byId.get(other.sourceId()).body()).contains(Normalize.text(other.evidence())))
                 .map(Claim::evidence).collect(java.util.stream.Collectors.joining(" "));
-            var numbers = Pattern.compile("\\d+(?:[.,]\\d+)*").matcher(c.text());
-            Set<String> evidenceNumbers = new HashSet<>(); var evidence = Pattern.compile("\\d+(?:[.,]\\d+)*").matcher(paragraphEvidence);
-            while(evidence.find()) evidenceNumbers.add(evidence.group().replace(',','.'));
-            while(numbers.find()) if(!evidenceNumbers.contains(numbers.group().replace(',','.'))) issues.add("Numeric claim is not grounded: " + numbers.group());
+            for(String number:EvidenceNumbers.missing(c.text(),paragraphEvidence))issues.add("Numeric claim is not grounded: " + number);
             var quotes = Pattern.compile("[„\"“]([^„\"“”]{8,})[\"“”]").matcher(c.text());
             while(quotes.find()) {
                 String quotation=Normalize.text(quotes.group(1));

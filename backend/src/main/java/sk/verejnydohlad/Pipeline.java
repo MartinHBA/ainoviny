@@ -151,6 +151,7 @@ public final class Pipeline {
             var original=new Draft(parent.title(),parent.perex(),parent.category(),store.blob("articles",parent.blobPath()),parent.claims());
             String checkpoint="editorial-revisions/"+a.id()+"/generated.json";String cached=store.optionalBlob("articles",checkpoint);
             draft=cached==null?paid(() -> ai.correct(original,group,order.instructions()),guard,deadline):Json.read(cached,Draft.class);Validation.draft(draft);
+            guard.check();if(cached==null)store.putBlob("articles",checkpoint,Json.write(draft));
             var institutions=group.stream().collect(java.util.stream.Collectors.toMap(Release::id,s->ResearchRegistry.group(s.sourceId())));
             var parentGroups=parent.claims().stream().map(c->institutions.get(c.sourceId())).filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet());
             var revisedGroups=draft.claims().stream().map(c->institutions.get(c.sourceId())).filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet());
@@ -209,6 +210,12 @@ public final class Pipeline {
                 checkpoint,a.sourceIds(),a.sourceUrls(),a.aiModel(),null,null,null,"",false,brief!=null && brief.sensitive(),List.of(),draft.claims(),"VERIFYING",a.editorialOrder(),a.editionDate());
             guard.check(); store.updateArticle(next,stored.version()); stored=store.article(a.id()); a=stored.value();
         } else draft=Json.read(store.blob("articles",a.blobPath()),Draft.class);
+        var commissioned=config.newsroomFlow()?Newsroom.order(store,a.id()):null;
+        if(commissioned!=null && commissioned.parentId()==null) {
+            draft=DraftRepair.run(a.id(),draft,verificationSources,a.sensitive(),store,ai,guard,new DraftRepair.Paid(){
+                public <T> T call(Supplier<T> action){return paid(action,guard,deadline);}
+            });
+        }
         Draft finalDraft=draft;
         List<Release> finalSources=verificationSources;
         Verification verification=Validation.grounded(draft,finalSources,paid(() -> ai.verify(finalDraft,finalSources),guard,deadline));
@@ -227,14 +234,15 @@ public final class Pipeline {
     }
     private String day() { return clock.instant().atZone(ZoneId.of("Europe/Bratislava")).toLocalDate().toString(); }
     private String budgetKey(){return scope.budgetKey(clock);}
-    private static String errorDescription(Exception error) {
+    static String errorDescription(Exception error) {
         String message=error.getMessage();
         // Only known fixed adapter/validation messages enter operational metadata, never arbitrary SDK data.
         var safe=Set.of("Invalid research brief","Invalid research finding","Unknown research evidence identifier","Ungrounded research number",
             "Analytical brief needs evidence from different institutions","Analytical draft omitted its second source","AI refusal or incomplete response",
             "Invalid JSON for ResearchBrief","Research needs 2-6 documents from different institutions","Unknown source evidence identifier",
             "Incomplete article generation","Invalid AI draft structure","Invalid claim map","Invalid research plan","Unknown research site",
-            "Researched draft omitted a relevant institution","Research input budget exceeded","Invalid researched claim","Invalid researched citation");
+            "Researched draft omitted a relevant institution","Editorial revision omitted an original perspective",
+            "Claim map too large","Correction source input budget exceeded","Research input budget exceeded","Invalid researched claim","Invalid researched citation");
         return error.getClass().getSimpleName()+(message!=null && safe.contains(message)?": "+message:"");
     }
 }

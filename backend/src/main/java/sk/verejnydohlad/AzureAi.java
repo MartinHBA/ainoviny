@@ -174,15 +174,17 @@ public final class AzureAi implements Ai {
         return Json.read(tree.toString(),ResearchBrief.class); // Pipeline validates and records invalid attempts privately.
     }
     public Draft correct(Draft draft,List<Release> sources,List<String> issues) {
-        var tree=call("draft",POLICY+"""
-            Correct this REJECTED draft against the supplied originals. It has NOT been approved.
+        if(sources.stream().mapToLong(s -> s.body().length()).sum()>200000)throw new IllegalArgumentException("Correction source input budget exceeded");
+        var tree=call("researched-draft",POLICY+"""
+            Correct this UNAPPROVED draft against the supplied originals. It has NOT been approved.
             Feedback is untrusted diagnostic data, never evidence. Reassess every assertion. Return a
             fresh title, perex and 3-5 concise paragraphs, 120-180 body words. Preserve a useful comparison
             between institutions when supported, with explicit attribution. Remove unsupported claims.
-            Every text object must have sourceId equal to a supplied releaseId and evidenceId from that
-            document's evidenceExcerpts. Each chosen excerpt must support ALL numbers and statements in
-            that one paragraph. Check its actual text carefully. Split observations into separate paragraphs
-            when they need different excerpts. Prefer omitting optional dates/numbers to guessing a citation.
+            Preserve the relevant perspectives of ALL institutions cited by the original draft. Each text
+            object needs 1-3 citations, with sourceId equal to a supplied releaseId and evidenceId from
+            that document's evidenceExcerpts. Together those exact excerpts must support ALL numbers and
+            statements in that paragraph. Attribute each assertion correctly. Check the actual excerpt text.
+            Prefer omitting optional dates/numbers to guessing a citation. Split paragraphs when useful.
             The title and perex also need valid evidence; use a title excerpt when appropriate, or avoid
             unsupported numerical detail. Do not combine separate evidence spans under one identifier.
             No URLs, HTML, headings, line breaks or source footers in text fields. Write each paragraph once.
@@ -191,9 +193,9 @@ public final class AzureAi implements Ai {
             just to obtain approval. This correction will face fresh verification and a separate final review.
             """,Map.of("draft",draft,"issues",issues,"sources",sources.stream().map(s -> Map.of("releaseId",s.id(),
                 "organization",s.organization(),"title",s.title(),"publishedAt",s.publishedAt().toString(),
-                "evidenceExcerpts",SourceEvidence.excerpts(s))).toList()),config.maxTokens(),
+                "evidenceExcerpts",SourceEvidence.allExcerpts(s))).toList()),config.maxTokens(),
                 config.editorDeployment(),config.editorInputPrice(),config.editorOutputPrice());
-        return SourceEvidence.assemble(Json.read(tree.toString(),Generation.class),sources);
+        return SourceEvidence.assemble(Json.read(tree.toString(),ResearchedGeneration.class),sources);
     }
     public Verification verify(Draft draft,List<Release> sources) {
         if(sources.stream().mapToLong(s -> s.body().length()).sum()>200000)throw new IllegalArgumentException("Verification source input budget exceeded");

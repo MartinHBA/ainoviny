@@ -55,7 +55,7 @@ final class Newsroom {
                 if(!needed(prepare,scope) || Instant.now().plusSeconds(65).isAfter(deadline))break;
                 if(commissioned(a.id())!=null || a.status()!=Status.DRAFT || a.phase().equals("COMPLETE"))continue;
                 guard.check();if(!store.reserveArticle(scope.budgetKey(clock),a.id(),config.maxArticles()))continue;
-                try{if(process(a,scope,guard,deadline))drafts++;}catch(Exception e){errors.add("legacy resume "+a.id()+": "+e.getClass().getSimpleName());}
+                try{if(process(a,scope,guard,deadline))drafts++;}catch(Exception e){errors.add("legacy resume "+a.id()+": "+Pipeline.errorDescription(e));}
             }
             // Resume exact commissions/checkpoints before buying new work. Orders survive a create crash.
             for(var order:knownOrders.values().stream().sorted(Comparator.comparing(StoryOrder::plannedAt)).toList()) {
@@ -66,7 +66,7 @@ final class Newsroom {
                 if(version.value().status()!=Status.DRAFT)continue;
                 if(!version.value().phase().equals("COMPLETE")) {
                     try {if(process(version.value(),scope,guard,deadline))drafts++;}
-                    catch(Exception e){errors.add("resume "+order.articleId()+": "+e.getClass().getSimpleName());}
+                    catch(Exception e){errors.add("resume "+order.articleId()+": "+Pipeline.errorDescription(e));}
                 }
             }
             // Also adopt already completed legacy drafts; published/rejected originals remain untouched.
@@ -91,7 +91,7 @@ final class Newsroom {
                         var order=new StoryOrder(id,pitch,null,clock.instant(),expires,List.of());
                         if(!reserve(order,scope,guard))break;planned++;
                         try{if(process(store.article(id).value(),scope,guard,deadline))drafts++;}
-                        catch(Exception e){errors.add("commission "+id+": "+e.getClass().getSimpleName());}
+                        catch(Exception e){errors.add("commission "+id+": "+Pipeline.errorDescription(e));}
                         if(config.autoPublish())rejected+=new AutomaticEditor(store,ai,config,clock,scope).run(guard,deadline,errors,false).rejected();
                         if(!prepare && config.autoPublish())published+=publishReserve(scope,guard,deadline,blockers,attemptedPublications);
                     }
@@ -121,13 +121,13 @@ final class Newsroom {
                     if(process(store.article(id).value(),scope,guard,deadline))drafts++;
                     if(config.autoPublish())rejected+=new AutomaticEditor(store,ai,config,clock,scope).run(guard,deadline,errors,false).rejected();
                     if(!prepare && config.autoPublish())published+=publishReserve(scope,guard,deadline,blockers,attemptedPublications);
-                }catch(Exception e){errors.add("revision "+parent.id()+": "+e.getClass().getSimpleName());}
+                }catch(Exception e){errors.add("revision "+parent.id()+": "+Pipeline.errorDescription(e));}
             }
             var budget=store.budget(scope.budgetKey(clock));
             if(budget.calls()>=config.maxCalls())blockers.add("AI call budget reached.");
             if(budget.articleIds().size()>=config.maxArticles())blockers.add("Concept attempt budget reached.");
             if(!prepare && needed(false,scope))blockers.add("Not enough approved current articles for the edition; quality gates were retained.");
-        }catch(Exception e){errors.add("newsroom: "+e.getClass().getSimpleName());}
+        }catch(Exception e){errors.add("newsroom: "+Pipeline.errorDescription(e));}
         var result=new RunResult(started,clock.instant(),collected,drafts,published,rejected,List.copyOf(errors));
         var budget=store.budget(scope.budgetKey(clock));int held=(int)store.editorial().stream().filter(a->a.status()!=Status.PUBLISHED &&
             (a.status()==Status.REVIEWED && !valid(a) || store.operational("reserve-hold|"+a.id())!=null || Optional.ofNullable(store.operational("feedback|"+a.id())).map(v->Json.read(v,RevisionFeedback.class).action().equals("HOLD")).orElse(false))).count();
@@ -207,7 +207,7 @@ final class Newsroom {
                 Validation.editorDecision(audit.decision());
                 if(!audit.hash().equals(hash) || !audit.decision().approved() || audit.decision().sensitive()){hold(a,"Fresh final editor did not approve",guard,blockers);continue;}
                 new Editorial(store,clock,config.maxPublished(),scope).publish(a.id(),guard);count++;
-            }catch(Exception e){hold(a,"Reserve publication deferred ("+e.getClass().getSimpleName()+")",guard,blockers);}
+            }catch(Exception e){hold(a,"Reserve publication deferred ("+Pipeline.errorDescription(e)+")",guard,blockers);}
         }
         return count;
     }

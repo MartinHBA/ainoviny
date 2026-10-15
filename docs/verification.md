@@ -1,5 +1,11 @@
 # Verification record
 
+## Citation preflight and stronger correction — 15 October 2026
+
+122 offline tests and 10 Azure SDK/Azurite integration tests passed; Maven verification and Function packaging completed. New regressions cover exact decimal equality without rounding, late evidence selection within the same cited original, refusal to borrow from an uncited document, cached successful and unsuccessful correction proposals, preservation of institutional perspectives, sensitive-story exclusion, and an entire newsroom publication with a single repaired concept followed by both verification and editor stages. The correction adapter uses the stronger deployment and the multi-citation schema.
+
+An offline replay used four actual rejected private drafts and their immutable originals; reconstructed bodies matched their stored hashes. Two no longer have deterministic numeric failures after exact decimal comparison and excerpt alignment. The other two retain unresolved grounding issues for a writer correction. This replay made no paid AI calls and does not establish semantic approval or publication of those articles.
+
 ## Planning desk and reserve — 15 October 2026
 
 117 offline tests and 10 Azure SDK/Azurite integration tests passed. The added cases exercise commissions from unused archived context without new feed items, private-only preparation, next-day publication without spending new concept slots, format diversity, independent ad hoc ledgers, shared leases, current-source changes/unavailability, exhausted call budgets, expiry, retry after publication failure, checkpointed writing, final-editor feedback and exactly one successor, interruption after saved feedback, and sensitive-story exclusion. Adapter tests cover strong-model planning/triage and writer-model commissioned drafting. SDK tests cover operational/order roundtrips plus actual reserve publication, source-check audit blobs, scope tags and public indexes. Bicep and example parameters compile.
