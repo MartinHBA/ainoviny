@@ -13,7 +13,7 @@ export function Header() {
     <header className="newspaper-header">
       <div className="edition-line"><time dateTime={new Date().toISOString()}>{slovakDate(new Date(), { weekday: 'long' })}</time><span>Verejný záujem. Každé ráno.</span><span className="edition-country">Slovenské digitálne noviny</span></div>
       <Link to="/" className="masthead" aria-label="Verejný dohľad — domov">VEREJNÝ DOHĽAD</Link>
-      <div className="masthead-subtitle"><span>Rozhodnutia pod drobnohľadom</span><span className="subtitle-dot">·</span><span>Súvislosti na prvom mieste</span></div>
+      <div className="masthead-subtitle">Denník umelej inteligencie</div>
       <nav aria-label="Hlavná navigácia">
         <NavLink to="/" end>Domov</NavLink><NavLink to="/rubrika/slovensko">Slovensko</NavLink><NavLink to="/rubrika/verejne-peniaze">Verejné peniaze</NavLink><NavLink to="/rubrika/politika">Politika</NavLink><NavLink to="/archiv">Archív</NavLink>
       </nav>
