@@ -27,6 +27,13 @@ class SourceEvidenceTest {
         var draft=SourceEvidence.assemble(new ResearchedGeneration(claim,claim,"Verejné peniaze",List.of(new ResearchedClaim(claim.text()+" Ide o syntetickú skúšku neskoršej pasáže dokumentu.",claim.citations()))),List.of(source));
         assertTrue(Validation.grounded(draft,List.of(source),new Verification(true,false,List.of())).passed());
     }
+    @Test void commissionedFirstConceptCanResolveTheLateExcerptOfferedByItsTargetedWriter() {
+        var source=ResearchTest.document("commission-late","rrz-sk","Syntetická analýza","Úvodná všeobecná informácia. ".repeat(600)+" Záverečné fiškálne riziká dosahujú 77 percent.");
+        var evidence=SourceEvidence.researchExcerpts(source,"fiškálne riziká").stream().filter(e->e.text().contains("77")).findFirst().orElseThrow();
+        var field=new GenerationClaim("Syntetická analýza uvádza riziká 77 percent.",source.id(),evidence.id());
+        var d=SourceEvidence.assemble(new Generation(field,field,"Verejné peniaze",List.of(new GenerationClaim(field.text()+" Ide o skúšku presnej neskoršej pasáže pôvodného dokumentu.",source.id(),evidence.id()))),List.of(source));
+        assertTrue(Validation.grounded(d,List.of(source),new Verification(true,false,List.of())).passed());
+    }
     @Test void numericalCitationCanUseAnotherProvidedContiguousExcerptFromSameDocument() {
         var fixture=Fixtures.release("numeric-selection");String text="Parlament schválil rozpočet na roky 2027 až 2029.";
         String body=text+" "+"Schválený rozpočet obsahuje verejné výdavky a príjmy. ".repeat(80);

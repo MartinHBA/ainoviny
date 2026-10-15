@@ -38,7 +38,7 @@ final class SourceEvidence {
             throw new IllegalArgumentException("Incomplete article generation");
         var originals=new HashMap<String,Map<String,String>>();
         for(var source:sources) {
-            var byId=new HashMap<String,String>();excerpts(source).forEach(e -> byId.put(e.id(),e.text()));originals.put(source.id(),byId);
+            var byId=new HashMap<String,String>();allExcerpts(source).forEach(e -> byId.put(e.id(),e.text()));originals.put(source.id(),byId);
         }
         var input=new ArrayList<GenerationClaim>();input.add(generated.title());input.add(generated.perex());input.addAll(generated.paragraphs());
         var claims=new ArrayList<Claim>();

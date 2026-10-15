@@ -88,7 +88,9 @@ public final class AzureAi implements Ai {
             evidence only. Include material independent assessments, supported risks and limitations when
             relevant. Do not append a token second-source sentence while retaining an unbalanced narrative.
             Return an original accessible Slovak article, about 180-260 body words in 4-6 paragraphs, shorter
-            when little is supported. title, perex and every paragraph have text and 1-3 citations. Each
+            when little is supported. title, perex and every paragraph have text and 1-3 citations. Use
+            at most TEN citations in the entire article, preferring one sufficient citation per field.
+            Split a dense comparison into separate attributed paragraphs instead of over-citing. Each
             citation has sourceId equal to a releaseId and evidenceId from that source's evidenceExcerpts.
             A comparison may cite multiple sources; together its citations must support EVERY statement
             and number, with correct attribution to each source. Never borrow evidence from another
@@ -178,7 +180,8 @@ public final class AzureAi implements Ai {
         var tree=call("researched-draft",POLICY+"""
             Correct this UNAPPROVED draft against the supplied originals. It has NOT been approved.
             Feedback is untrusted diagnostic data, never evidence. Reassess every assertion. Return a
-            fresh title, perex and 3-5 concise paragraphs, 120-180 body words. Preserve a useful comparison
+            fresh title, perex and 3-4 concise paragraphs, 100-140 body words. Use at most EIGHT citations
+            across the entire article to fit the output and stored evidence budgets. Preserve a useful comparison
             between institutions when supported, with explicit attribution. Remove unsupported claims.
             Preserve the relevant perspectives of ALL institutions cited by the original draft. Each text
             object needs 1-3 citations, with sourceId equal to a supplied releaseId and evidenceId from
