@@ -9,6 +9,7 @@ import sk.verejnydohlad.Models.*;
 /** A bounded editorial desk: discovery, commissions, private reserve and morning publication. */
 final class Newsroom {
     static final String POLICY="newsroom-v1", REVISION="editorial-revision-v1";
+    static final String PUBLICATION_POLICY="cited-originals-v2";
     private static final Logger LOG=Logger.getLogger(Newsroom.class.getName());
     interface Discovery {
         record Result(int documents,int checked,List<String> gaps){}
@@ -187,14 +188,18 @@ final class Newsroom {
             if(!attempted.add(a.id()))continue;
             try {
                 guard.check();var draft=new Draft(a.title(),a.perex(),a.category(),store.blob("articles",a.blobPath()),a.claims());
-                var sources=a.sourceIds().stream().map(store::release).toList();
-                String base="publication-checks/"+a.id()+"/"+a.approvedHash()+"/"+(clock.instant().getEpochSecond()/900)+"/";
+                var cited=draft.claims().stream().map(Claim::sourceId).collect(java.util.stream.Collectors.toSet());
+                if(cited.isEmpty() || !new HashSet<>(a.sourceIds()).containsAll(cited))throw new IllegalStateException("Missing cited original");
+                // Research snapshots retain all consulted material. Only originals actually cited by this
+                // approved text are publication dependencies; every citation still receives a fresh check.
+                var sources=a.sourceIds().stream().distinct().filter(cited::contains).map(store::release).toList();
+                String base="publication-checks/"+a.id()+"/"+a.approvedHash()+"/"+PUBLICATION_POLICY+"/"+(clock.instant().getEpochSecond()/900)+"/";
                 String cached=store.optionalBlob("articles",base+"sources.json");
                 var current=cached==null?freshness.refresh(sources,guard,deadline):Arrays.asList(Json.read(cached,Release[].class));
                 if(current.size()!=sources.size() || current.stream().mapToLong(r->r.body().length()).sum()>200000 ||
                     !current.stream().map(Release::id).toList().equals(sources.stream().map(Release::id).toList()))throw new IllegalStateException("Invalid current originals");
                 guard.check();if(cached==null)store.putBlob("articles",base+"sources.json",Json.write(current));
-                String hash=Normalize.hash(Json.write(List.of(a.approvedHash(),current,ai.model(),ai.editorModel(),POLICY)));
+                String hash=Normalize.hash(Json.write(List.of(a.approvedHash(),current,ai.model(),ai.editorModel(),POLICY,PUBLICATION_POLICY)));
                 String raw=store.optionalBlob("articles",base+"verified.json");
                 Verification verification=raw==null?Validation.grounded(draft,current,paid(()->ai.verify(draft,current),scope,guard,deadline)):Json.read(raw,Verification.class);
                 guard.check();if(raw==null)store.putBlob("articles",base+"verified.json",Json.write(verification));

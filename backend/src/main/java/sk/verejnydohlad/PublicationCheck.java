@@ -21,6 +21,7 @@ interface PublicationCheck {
                 if(requests.get()>1)try{Thread.sleep(1000);}catch(InterruptedException e){Thread.currentThread().interrupt();throw new IllegalStateException("Interrupted");}
             });
             var robots=new Robots(http);OfficialResearch.Fetch fetch=testFetch!=null?testFetch:(u,h)->{robots.requireAllowed(u,h);return http.get(u,h);};
+            var feeds=new HashMap<String,List<FeedParser.Item>>();
             var result=new ArrayList<Release>();
             for(var source:originals) {
                 guard.check();var site=ResearchRegistry.site(source.sourceId());
@@ -31,7 +32,22 @@ interface PublicationCheck {
                     else {
                         var page=Jsoup.parse(new String(bytes,StandardCharsets.UTF_8),source.originalUrl());
                         String h1=page.select("h1").text();if(!h1.isBlank())title=h1;
-                        body=OfficialResearch.body(page,site);var parsed=OfficialResearch.date(page);if(!parsed.equals(Instant.EPOCH))date=parsed;
+                        try {body=OfficialResearch.body(page,site);}
+                        catch(IllegalArgumentException missingSelector){body="";}
+                        var parsed=OfficialResearch.date(page);if(!parsed.equals(Instant.EPOCH))date=parsed;
+                        if(body.length()<120 && Set.of("FEED","SEARCH_FEED").contains(site.mode())) {
+                            // Re-fetch today's official feed, never use the archived body as a freshness fallback.
+                            // Match the exact canonical article URL; an unrelated/newer item is not evidence.
+                            var items=feeds.get(site.id());
+                            if(items==null) {
+                                String url=site.mode().equals("SEARCH_FEED")?site.entryUrl()+"feed/":site.entryUrl();
+                                var feed=new Source(site.id(),site.name(),site.entryUrl(),url,"RSS",true,"Current original feed","",site.hosts());
+                                items=new FeedParser().parse(fetch.get(url,site.hosts()),feed);feeds.put(site.id(),items);
+                            }
+                            var current=items.stream().filter(i->Normalize.canonical(i.url()).equals(Normalize.canonical(source.originalUrl())) && i.body().length()>=120 && i.body().length()<=50000).findFirst()
+                                .orElseThrow(()->new IllegalStateException("Current original absent from official feed"));
+                            title=current.title();body=current.body();date=current.publishedAt();
+                        }
                     }
                 }catch(Exception e){throw new IllegalStateException("Current original cannot be extracted",e);}
                 if(body.length()<120 || body.length()>50000)throw new IllegalStateException("Current original text outside bounds");

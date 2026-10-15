@@ -8,6 +8,18 @@ import sk.verejnydohlad.Models.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class NewsroomDiscoveryTest {
+    @Test void publicationCanUseFreshOfficialFeedForUnloadedHtmlButCannotReuseArchivedOrDifferentArticleText(){
+        var fixture=ResearchFlowTest.source("current-feed","ifp-sr");String url="https://ifp.sk/current-report/";
+        var source=new Release(Normalize.hash(url),"ifp-sr","IFP",url,fixture.publishedAt(),fixture.collectedAt(),fixture.title(),fixture.body(),fixture.contentHash(),fixture.blobPath());
+        String current="Aktuálny originál vo feede. "+body;
+        var urls=new ArrayList<String>();
+        var check=PublicationCheck.official((u,h)->{urls.add(u);return (u.endsWith("/feed/")?"<rss><channel><item><pubDate>Mon, 12 Oct 2026 03:00:00 GMT</pubDate><title>Aktuálny názov</title><link>"+url+"</link><description>"+current+"</description></item></channel></rss>":"<html><main role='main'>Unloaded</main></html>").getBytes(StandardCharsets.UTF_8);});
+        var store=new MemoryStore();try(var guard=store.lock()) {
+            var result=check.refresh(List.of(source),guard,Instant.now().plusSeconds(90)).getFirst();assertEquals(current,result.body());assertNotEquals(source.body(),result.body());assertEquals("Aktuálny názov",result.title());assertTrue(urls.contains("https://ifp.sk/feed/"));
+            var absent=PublicationCheck.official((u,h)->(u.endsWith("/feed/")?"<rss><channel><item><pubDate>Mon, 12 Oct 2026 03:00:00 GMT</pubDate><title>Iná správa</title><link>https://ifp.sk/other/</link><description>"+current+"</description></item></channel></rss>":"<html><main role='main'>Unloaded</main></html>").getBytes(StandardCharsets.UTF_8));
+            assertThrows(IllegalStateException.class,()->absent.refresh(List.of(source),guard,Instant.now().plusSeconds(90)));
+        }
+    }
     @Test void currentNbsAndRrzLayoutsExtractOnlyArticleTextAndKeepLegacyLayoutSupported(){
         var nbs=org.jsoup.Jsoup.parse("<nav>Unrelated menu</nav><article class='nbs-post'><h1>Aktuálna analýza</h1><p>"+body+"</p></article><aside>Related navigation</aside>");
         var rrz=org.jsoup.Jsoup.parse("<article class='article-component'><h1>Aktuálne hodnotenie</h1><div class='article-content'>"+body+"</div><aside>Related navigation</aside></article>");

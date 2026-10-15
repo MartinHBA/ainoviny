@@ -7,6 +7,15 @@ import sk.verejnydohlad.Models.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class NewsroomTest {
+    @Test void publicationRefreshesEveryCitedOriginalWithoutMakingUnusedResearchContextADependency(){
+        var store=new MemoryStore();var primary=Fixtures.release("cited-primary");var context=Fixtures.release("unused-context");store.collect(primary);store.collect(context);
+        var ai=new DeskAi(){@Override public List<StoryPitch> commission(List<Release>d,List<Article>h){return List.of(new StoryPitch(primary.id(),List.of(primary.id()),"Čo vysvetľuje tento dokument?","EXPLAINER",90,"Synthetic question"));}};
+        ResearchLookup lookup=(p,d,s,st,g,end)->new ResearchLookup.Result(List.of(primary,context),List.of());
+        int[] refreshed={0};PublicationCheck check=(sources,guard,end)->{refreshed[0]++;assertEquals(List.of(primary),sources);return sources;};
+        var desk=new Newsroom(store,ai,config("MAX_PUBLISHED_ARTICLES_PER_DAY","1"),Fixtures.CLOCK,lookup,(s,g,d)->new Newsroom.Discovery.Result(0,0,List.of()),check);
+        assertEquals(1,desk.run(false,RunScope.scheduled(),false).published());assertEquals(1,refreshed[0]);assertEquals(2,ai.checks);assertEquals(2,ai.reviews);
+        assertEquals(List.of(primary.id(),context.id()),store.editorial().getFirst().sourceIds());
+    }
     static Config config(String... overrides){var env=new HashMap<String,String>(Map.of("APP_STORAGE_CONNECTION_STRING","UseDevelopmentStorage=true","AUTO_PUBLISH_ENABLED","true","RESEARCH_FLOW_ENABLED","true","NEWSROOM_FLOW_ENABLED","true"));for(int i=0;i<overrides.length;i+=2)env.put(overrides[i],overrides[i+1]);return Config.from(env);}
     static class DeskAi implements Ai {
         final MockAi mock=new MockAi();int planning,writing,feedback,corrections,reviews,checks;boolean rejectFirst,failWriting,failCorrection,rejectCorrected,rejectFirstReview,sensitive;

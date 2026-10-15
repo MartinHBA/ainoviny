@@ -242,7 +242,9 @@ public final class Pipeline {
             "Invalid JSON for ResearchBrief","Research needs 2-6 documents from different institutions","Unknown source evidence identifier",
             "Incomplete article generation","Invalid AI draft structure","Invalid claim map","Invalid research plan","Unknown research site",
             "Researched draft omitted a relevant institution","Editorial revision omitted an original perspective",
-            "Claim map too large","Correction source input budget exceeded","Research input budget exceeded","Invalid researched claim","Invalid researched citation");
+            "Claim map too large","Correction source input budget exceeded","Research input budget exceeded","Invalid researched claim","Invalid researched citation",
+            "Invalid chief editor decision","Contradictory chief editor approval","Invalid chief editor reason","Invalid commissions",
+            "Current original cannot be extracted","Current original text outside bounds","Current original absent from official feed","Freshness budget reached");
         return error.getClass().getSimpleName()+(message!=null && safe.contains(message)?": "+message:"");
     }
 }

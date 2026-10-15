@@ -79,7 +79,7 @@ public final class AutomaticEditor {
                 if(publish){editorial.publish(a.id(),guard); published++;}
             } catch(Exception e) {
                 LOG.log(Level.WARNING,"Chief editor failed for article "+candidate.id(),e);
-                errors.add("editor "+candidate.id()+": "+e.getClass().getSimpleName());
+                errors.add("editor "+candidate.id()+": "+Pipeline.errorDescription(e));
             }
         }
         return new Result(published,rejected);
