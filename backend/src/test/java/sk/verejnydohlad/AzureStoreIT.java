@@ -11,6 +11,25 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @EnabledIfSystemProperty(named="storage.integration",matches="true")
 class AzureStoreIT {
+    @Test void sdkPublishesPrivateReserveOnlyAfterCurrentChecksAndWritesNewsroomSummary(){
+        var config=Config.from(Map.of("APP_STORAGE_CONNECTION_STRING","UseDevelopmentStorage=true","AUTO_PUBLISH_ENABLED","true","RESEARCH_FLOW_ENABLED","true","NEWSROOM_FLOW_ENABLED","true","MAX_AI_CALLS_PER_DAY","2"));
+        var store=new AzureStore(config);store.initialize(List.of());var clock=Clock.offset(Fixtures.CLOCK,Duration.ofDays(4));var scope=RunScope.adHoc();
+        var r=Fixtures.release("reserve-sdk-"+UUID.randomUUID());store.collect(r);var ai=new MockAi();var d=ai.generate(List.of(r));String id=Normalize.hash("reserve|"+r.id()),path="drafts/"+id+"/content.md";store.putBlob("articles",path,d.markdown());
+        var a=new Article(id,"synthetic-"+id.substring(0,16),d.title(),d.perex(),d.category(),clock.instant(),clock.instant(),null,Status.DRAFT,path,List.of(r.id()),List.of(r.originalUrl()),ai.model(),null,null,null,Normalize.hash(d.markdown()),true,false,List.of(),d.claims(),"COMPLETE",0,RunScope.date(clock));
+        store.createArticle(a.state(Status.REVIEWED,clock.instant(),"AI editor: "+ai.editorModel(),Editorial.approvalHash(a,d.markdown()),null,path));
+        var pitch=new StoryPitch(r.id(),List.of(r.id()),"Čo uvádza syntetický dokument?","EXPLAINER",85,"Synthetic reserve fixture");var order=new StoryOrder(id,pitch,null,clock.instant(),clock.instant().plusSeconds(86400),List.of());
+        store.operational("story|"+id,Json.write(order));
+        new Newsroom(store,ai,config,clock,ResearchLookup.archiveOnly(),(s,g,e)->new Newsroom.Discovery.Result(0,0,List.of()),PublicationCheck.offline()).run(false,scope,false);
+        assertEquals(Status.PUBLISHED,store.article(id).value().status());assertEquals(scope.label(),store.publicationScope(id));assertNotNull(new PublicApi(store).detail(a.slug()));assertEquals(2,store.budget(scope.label()).calls());
+        assertTrue(table("Sources").listEntities(new com.azure.data.tables.models.ListEntitiesOptions().setFilter("PartitionKey eq 'ops' and RowKey ge 'newsroom-run|' and RowKey lt 'newsroom-run}'"),null,null).iterator().hasNext());
+    }
+    @Test void newsroomOrdersAndOperationalSummariesPersistWithoutChangingArticleSchema(){
+        var store=new AzureStore(Config.from(Map.of("APP_STORAGE_CONNECTION_STRING","UseDevelopmentStorage=true")));store.initialize(List.of());
+        String id=Normalize.hash("newsroom-sdk-"+UUID.randomUUID());var pitch=new StoryPitch(id,List.of(id),"Čo ukazuje syntetický podklad?","ANALYSIS",80,"Synthetic storage contract");
+        var order=new StoryOrder(id,pitch,null,Fixtures.CLOCK.instant(),Fixtures.CLOCK.instant().plusSeconds(86400),List.of());
+        try(var guard=store.lock()){guard.check();store.operational("story|"+id,Json.write(order));store.operational("discovery-cursor-test|"+id,"5");}
+        assertEquals(order,Newsroom.order(store,id));assertTrue(store.orders().contains(order));assertEquals("5",store.operational("discovery-cursor-test|"+id));assertNull(store.article(id));
+    }
     @Test void manualBudgetAndPublicationScopeAreIndependentAndCommitWithAllPublicIndexes() {
         var store=new AzureStore(Config.from(Map.of("APP_STORAGE_CONNECTION_STRING","UseDevelopmentStorage=true")));store.initialize(List.of());
         var scope=RunScope.adHoc();var clock=Clock.offset(Fixtures.CLOCK,Duration.ofDays(-1));var before=store.budget("2026-10-11");

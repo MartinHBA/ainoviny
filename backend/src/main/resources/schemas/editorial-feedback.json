@@ -1,0 +1,1 @@
+{"type":"object","properties":{"action":{"type":"string","enum":["REVISE","HOLD","DROP"]},"instructions":{"type":"array","items":{"type":"string"}},"reason":{"type":"string"}},"required":["action","instructions","reason"],"additionalProperties":false}

@@ -32,6 +32,11 @@ public final class Collector {
                             if (content.isEmpty()) throw new IllegalStateException("Configured body selector no longer matches");
                             body = Normalize.text(content.outerHtml());
                         }
+                        if(body.length()<120 && source.bodySelector().isBlank()) {
+                            var site=ResearchRegistry.site(source.sourceId());
+                            robots.requireAllowed(item.url(),source.allowedHosts());Thread.sleep(1000);
+                            body=OfficialResearch.body(Jsoup.parse(new String(http.get(item.url(),source.allowedHosts()),StandardCharsets.UTF_8),item.url()),site);
+                        }
                         if (body.length() < 120) throw new IllegalStateException("Feed does not provide adequate source text");
                         if (body.length() > 100_000) throw new IllegalStateException("Source body too large");
                         String hash = Normalize.hash(body), id = Normalize.hash(item.url());

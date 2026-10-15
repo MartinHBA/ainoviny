@@ -15,7 +15,8 @@ final class ResearchFlow {
         String inputHash=Normalize.hash(Json.write(List.of(seeds,ai.model(),ai.editorModel(),POLICY,ResearchRegistry.SITES)));
         String root="assistant/"+article.id()+"/"+inputHash+"/";
         String raw=store.optionalBlob("articles",root+"initial.json");
-        Draft initial=raw==null?paid.call(() -> ai.generate(seeds)):Json.read(raw,Draft.class);Validation.draft(initial);
+        var order=Newsroom.order(store,article.id());
+        Draft initial=raw==null?paid.call(() -> order==null?ai.generate(seeds):ai.write(order.pitch(),seeds)):Json.read(raw,Draft.class);Validation.draft(initial);
         save(store,guard,root+"initial.json",initial);
         String planRaw=store.optionalBlob("articles",root+"plan.json");
         ResearchPlan plan=planRaw==null?paid.call(() -> ai.plan(initial,seeds)):Json.read(planRaw,ResearchPlan.class);

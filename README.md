@@ -4,12 +4,12 @@ Slovenské digitálne noviny, ktoré spracúvajú oficiálne dokumenty o rozhodn
 
 ## Ako noviny fungujú pod kapotou
 
-Článok vzniká cez **prvý koncept → cielenú rešerš → prepracovanie redaktorom → overenie → samostatného AI editora**. Bežná prevádzka s aktivovaným automatickým publikovaním nevyžaduje ľudskú redakčnú prácu. AI kontrola porovnáva text s podkladmi; nedokazuje pravdivosť tvrdení ich vydavateľov.
+Redakcia priebežne **objavuje témy → plánuje články → píše a rešeršuje → overuje → pripravuje súkromnú zásobu → skladá ranné vydanie**. Cieľom sú tri nové články ku káve, s výberom aktuálnych správ, analýz a praktických vysvetlení. Bežná prevádzka s aktivovaným automatickým publikovaním nevyžaduje ľudskú redakčnú prácu. AI kontrola porovnáva text s podkladmi; nedokazuje pravdivosť tvrdení ich vydavateľov. Nedostatok overených článkov sa hlási, neobchádza sa znížením kvality.
 
 ```mermaid
 flowchart TD
-    S[Oficiálne RSS a Atom] --> C[Zber originálov a odstránenie duplicít]
-    C --> R[Hodnotenie významu a výber témy]
+    S[Oficiálne feedy a rotačný prieskum schválených webov] --> C[Archív originálov a odstránenie duplicít]
+    C --> R[Plánujúci editor: otázka, formát a podklady článku]
     R --> D[Redaktor: prvý súkromný koncept]
     D --> P[Asistent: otázky a výber oficiálnych zdrojov]
     P --> H[Dohľadanie HTML a textových PDF; uložený archív]
@@ -17,13 +17,18 @@ flowchart TD
     A --> W[Redaktor: prepracovanie článku po rešerši]
     W --> V[Kontrola citácií, čísel a súladu so zdrojmi]
     V --> E[Samostatný AI editor: schválenie alebo odmietnutie]
-    E --> T[Atómové publikovanie schváleného článku]
+    E --> Z[Súkromná zásoba schválených článkov]
+    E --> O[Jedno vrátenie opraviteľného textu redaktorovi]
+    O --> V
+    Z --> K[Ranný alebo ad hoc výber a nové načítanie zdrojov]
+    K --> J[Nové overenie a samostatné schválenie aktuálnych podkladov]
+    J --> T[Atómové publikovanie najviac troch článkov]
     T --> API[Verejné API]
     API --> F[Web novín]
 ```
 
 1. **Zberateľ** načíta oficiálne zdroje, normalizuje text a uloží originál do súkromného Blob úložiska. URL a hash obsahu bránia duplicitám. Starší dokument môže slúžiť ako kontext, nie ako nová správa.
-2. **Výber tém** hodnotí verejný záujem, dopad na občanov, význam rozhodnutia a verejné výdavky. Súvisiace nové dokumenty zoskupí a rezervuje denný koncept.
+2. **Prieskumník a plánujúci editor** dopĺňajú šesť pravidelných feedov rotačným prehľadávaním podporovaných webov z 30-položkového katalógu. Editor vyberá aj doteraz nepoužité analýzy a dokumenty z 90-dňového archívu. Dostáva históriu publikácií a zamietnutí, navrhne otázku, formát (`NEWS`, `ANALYSIS`, `EXPLAINER`) a konkrétne podklady. Kód kontroluje ID zdrojov a deduplikáciu; nový názov neotvára tú istú objednávku znova.
 3. **Redaktor** napíše prvý pracovný text. Koncept ešte nie je overený ani verejný.
 4. **Rešeršný asistent** z konceptu určí chýbajúcu otázku, najviac dve vyhľadávacie frázy a štyri oficiálne zdroje. Vyberá len ID zo schváleného registra; nevymýšľa URL a neprechádza ľubovoľný web. Pri rozpočte sa musí aspoň pokúsiť dohľadať hodnotenie RRZ.
 5. **Dohľadávanie** prehľadá dostupné oficiálne weby a doplní uložený archív. IFP, RRZ a NBS majú cielené vyhľadávanie cez RSS 2.0. Ďalšie konektory používajú oficiálne feedy alebo relevantné odkazy na vstupných stránkach. Čitateľné PDF prílohy môžu vstúpiť do podkladov s označením strán. Nedostupný zdroj či nepodporovaný formát sa zaznamená ako medzera.
@@ -36,6 +41,7 @@ Pri rozpočte napríklad prvý koncept vychádza zo správy MF. Asistent dohľad
 | Rola | Predvolené nasadenie modelu | Úloha |
 |---|---|---|
 | Výber tém | `gpt-4.1-mini` | Význam správy a zoskupenie tém. |
+| Plánujúci editor | `gpt-4.1` | Objednávky článkov z archívu a nových dokumentov; história a pestrosť vydania. |
 | Redaktor | `gpt-4.1-mini` | Prvý koncept a prepracovanie po rešerši. |
 | Rešeršný asistent | `gpt-4.1` | Plán dohľadávania a zhodnotenie získaných dokumentov. |
 | Overovateľ | `gpt-4.1-mini` | Samostatné porovnanie výsledného článku so zdrojmi. |
@@ -55,7 +61,13 @@ Platí presný HTTPS zoznam hostov, kontrola robots, zákaz presmerovaní a súk
 
 ### Limity, checkpointy a publikovanie
 
-Predvolené limity sú **6 konceptov, 3 publikácie a 40 pokusov o AI volanie denne**. Zahŕňajú opravy, odmietnuté a prerušené pokusy; publikácie sa počítajú podľa skutočného dátumu v Bratislave a zahŕňajú aj ručné publikovanie. Sú to maximá, nie záruka konkrétneho počtu článkov. Úplný nový článok obvykle potrebuje päť volaní pred editorom a jedno záverečné posúdenie; dávkované hodnotenie tém je navyše. Editor dostáva dokončené články priebežne, aby ďalšie rešerše neminuli všetky volania pred publikovaním.
+**Príprava a ranné vydanie sú oddelené.** `PrepareEdition` beží o 09:00, 15:00 a 21:00 UTC a dopĺňa súkromnú zásobu s cieľom deviatich schválených článkov (`READY_ARTICLE_TARGET=9`). V lete je to 11:00, 17:00 a 23:00 v Bratislave. `MorningEdition` ostáva o 03:00 UTC (v lete 05:00, v zime 04:00); spolu s `AdHocEdition` publikuje najviac tri schválené aktuálne články a podľa potreby dopracuje ďalšie. Príprava nikdy nepublikuje. Všetky plánované behy zdieľajú denných 6 konceptov a 40 AI pokusov; nejde o nový rozpočet na každé spustenie.
+
+Spravodajská objednávka platí najviac dva dni, analytická a vysvetľujúca sedem dní. Pred vydaním sa pôvodné odkazy znova načítajú a výsledný text prejde novým overovateľom aj silnejším editorom nad aktuálnymi plnými podkladmi. Výsledky sa na obnovu prerušeného publikovania ukladajú do 15-minútových checkpointov. Chýbajúci zdroj, zmenené dôkazy, citlivé tvrdenie, vypršanie platnosti či vyčerpaný rozpočet článok odložia. Táto kontrola pôvodných odkazov a ohraničený prieskum nie sú úplným sledovaním všetkých neskorších udalostí k téme.
+
+Zamietnutie zostáva v histórii. Samostatná editorská spätná väzba rozlišuje `REVISE` (jedna nová verzia s pokynmi), `HOLD` (chýbajúce dôkazy) a `DROP` (nevhodná téma). Nová verzia dostane vlastné ID, nové overenie a nezávislé schválenie; nemôže vytvoriť ďalší opravný reťazec. Citlivé zamietnutia sa automaticky neprepisujú. Chýbajúci dokument alebo nový podstatný zdroj môžu viesť k novej doloženej objednávke, nie k opakovanému prepisovaniu bez dôkazov.
+
+Predvolené limity sú **6 konceptov, 3 publikácie a 40 pokusov o AI volanie denne**. Zahŕňajú opravy, odmietnuté a prerušené pokusy; publikácie sa počítajú podľa skutočného dátumu v Bratislave a zahŕňajú aj ručné publikovanie. Sú to maximá, nie záruka konkrétneho počtu článkov. Nová objednávka obvykle potrebuje päť volaní na tvorbu a rešerš, jedno schválenie zásoby a dve aktuálne kontroly pri publikovaní. Plánovanie, spätná väzba a opakované pokusy sú navyše; tri nové úspešné články majú základ 25 volaní vrátane jedného plánovania. Pripravené články pri vydaní nespotrebujú nový koncept, ale aktuálne kontroly áno. Zásoba sa dopĺňa postupne.
 
 **Ad hoc beh má samostatný rozpočet a nečerpá denné limity.** Používa rovnaké nastavené stropy (predvolene 6 konceptov / 3 publikácie / 40 AI volaní) na konkrétny manuálny beh. Jeho publikácie neznižujú ranný publikačný limit a môže bežať aj po vyčerpaní dnešného rozpočtu. Každý beh má UUID; opakovanie rovnakého UUID zachová jeho počítadlá a checkpointy. Nové UUID znamená nový samostatný rozpočet. Deduplikácia, globálny lease, overenie a AI editor platia ďalej. Platené AI volania sa stále účtujú; doterajšie denné počty sa spätne nemažú ani nepresúvajú.
 
@@ -66,6 +78,8 @@ Prvý koncept, plán, výsledok dohľadávania, rešerš a prepracovaný text ma
 Publikovanie používa spoločný obnovovaný Blob lease a atómovú Table transakciu pre súkromné metadáta aj verejné indexy. Rozpracované články a rešerše nie sú verejné. Staršie rozpracované články dokončia pôvodný proces; nové začínajú rešeršným flow. Zverejnené články sa automaticky neprepisujú.
 
 `RESEARCH_FLOW_ENABLED` je predvolene `true` v Azure režime a `false` v offline mock režime. Dá sa výslovne vypnúť. Staršie App Settings 8/5 sa pri novom kóde bezpečne obmedzia na 6/3; pri nasadení ich nastaviť výslovne na nové hodnoty podľa [deployment návodu](docs/deployment.md). Denné ledger záznamy sa nemažú ani neresetujú. Existujúci backend treba aktualizovať, aby nový flow bežal v produkcii.
+
+`NEWSROOM_FLOW_ENABLED` má rovnaké predvolené hodnoty podľa režimu a vyžaduje `RESEARCH_FLOW_ENABLED=true`. Vypnutím sa obnoví pôvodný proces nových feedových položiek. Súkromné objednávky sú v `Sources.ops` pod `story|ID`, spätná väzba pod `feedback|ID`, odložené publikácie pod `reserve-hold|ID` a podrobný súhrn pod `newsroom-run|...`: počet pripravených článkov, chýbajúce publikácie, spotrebovaný rozpočet a konkrétne prekážky. `editorial.ps1 newsroom` zobrazí stav bez AI volaní.
 
 ## Local setup
 

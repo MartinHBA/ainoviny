@@ -39,4 +39,7 @@ public interface Store {
     void sourceChecked(Source source, java.time.Instant at);
     void run(RunResult result);
     default void run(RunResult result,String scope){run(result);}
+    default String operational(String key){return null;}
+    default void operational(String key,String payload){throw new UnsupportedOperationException("Newsroom state unavailable");}
+    default List<StoryOrder> orders(){return List.of();}
 }

@@ -19,6 +19,11 @@ param autoPublishEnabled bool = false
 param aiMode string = 'azure'
 @description('Initial private concept, targeted official-source research and one writer revision before verification.')
 param researchFlowEnabled bool = true
+@description('Discover official-site topics, maintain a private article reserve and plan editions.')
+param newsroomFlowEnabled bool = true
+@minValue(3)
+@maxValue(12)
+param readyArticleTarget int = 9
 @description('Existing Application Insights connection string. No additional monitoring account is created by default.')
 @secure()
 param applicationInsightsConnectionString string = ''
@@ -132,6 +137,8 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'STORAGE_ACCOUNT_NAME', value: storage.name }
         { name: 'AI_MODE', value: aiMode }
           { name: 'RESEARCH_FLOW_ENABLED', value: string(researchFlowEnabled) }
+        { name: 'NEWSROOM_FLOW_ENABLED', value: string(newsroomFlowEnabled) }
+        { name: 'READY_ARTICLE_TARGET', value: string(readyArticleTarget) }
         { name: 'AZURE_OPENAI_ENDPOINT', value: openAiEndpoint }
         { name: 'AZURE_OPENAI_DEPLOYMENT', value: openAiDeployment }
         { name: 'AZURE_OPENAI_EDITOR_DEPLOYMENT', value: openAiEditorDeployment }

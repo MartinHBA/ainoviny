@@ -1,6 +1,6 @@
 [
  {"id":"mf-sr","name":"Ministerstvo financií SR","group":"mf-sr","mode":"FEED","entryUrl":"https://www.mfsr.sk/sk/rss.html","hosts":["www.mfsr.sk"],"selector":"main article","scope":"Rozpočet, prílohy, fiškálne dokumenty; stanovisko predkladateľa."},
- {"id":"ifp-sr","name":"Inštitút finančnej politiky","group":"mf-sr","mode":"SEARCH_FEED","entryUrl":"https://ifp.sk/","hosts":["ifp.sk","ulozisko.institutfinancnejpolitiky.sk"],"selector":".entry-content","scope":"Prognózy a analýzy IFP; útvar MF, nie nezávislé potvrdenie MF."},
+ {"id":"ifp-sr","name":"Inštitút finančnej politiky","group":"mf-sr","mode":"SEARCH_FEED","entryUrl":"https://ifp.sk/","hosts":["ifp.sk","ulozisko.institutfinancnejpolitiky.sk"],"selector":"main[role=main]","scope":"Prognózy a analýzy IFP; útvar MF, nie nezávislé potvrdenie MF."},
  {"id":"uhp-sr","name":"Útvar hodnoty za peniaze","group":"mf-sr","mode":"HTML","entryUrl":"https://www.mfsr.sk/uhp/","hosts":["www.mfsr.sk"],"selector":"main article","scope":"Revízie výdavkov a hodnotenia investícií; útvar MF."},
  {"id":"rrz-sk","name":"Rada pre rozpočtovú zodpovednosť","group":"rrz-sk","mode":"SEARCH_FEED","entryUrl":"https://www.rrz.sk/","hosts":["www.rrz.sk"],"selector":".entry-content","scope":"Nezávislé fiškálne hodnotenia; porovnať rovnaké znenie a roky rozpočtu."},
  {"id":"nbs-sk","name":"Národná banka Slovenska","group":"nbs-sk","mode":"SEARCH_FEED","entryUrl":"https://nbs.sk/","hosts":["nbs.sk"],"selector":".entry-content","scope":"Ekonomický vývoj, predikcie a finančná stabilita; odhad nie je výsledok."},

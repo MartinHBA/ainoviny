@@ -223,12 +223,14 @@ az deployment group create --name newspaper-editor-model --resource-group AI --t
 if ($LASTEXITCODE -ne 0) { throw 'Editor model deployment failed; keep automatic publication disabled.' }
 
 # Enable only after the updated backend/frontend and editor model are deployed:
-az functionapp config appsettings set --resource-group verejny-dohlad --name verejnydohlad-wny6o5yct2uf2 --settings AZURE_OPENAI_EDITOR_DEPLOYMENT=gpt-4.1 AUTO_PUBLISH_ENABLED=true RESEARCH_FLOW_ENABLED=true MAX_ARTICLES_PER_DAY=6 MAX_PUBLISHED_ARTICLES_PER_DAY=3 MAX_PRESS_RELEASES_PER_RUN=40 MAX_AI_CALLS_PER_DAY=40 --output none
+az functionapp config appsettings set --resource-group verejny-dohlad --name verejnydohlad-wny6o5yct2uf2 --settings AZURE_OPENAI_EDITOR_DEPLOYMENT=gpt-4.1 AUTO_PUBLISH_ENABLED=true RESEARCH_FLOW_ENABLED=true NEWSROOM_FLOW_ENABLED=true READY_ARTICLE_TARGET=9 MAX_ARTICLES_PER_DAY=6 MAX_PUBLISHED_ARTICLES_PER_DAY=3 MAX_PRESS_RELEASES_PER_RUN=40 MAX_AI_CALLS_PER_DAY=40 --output none
 if ($LASTEXITCODE -ne 0) { throw 'Automatic editor settings update failed.' }
 Invoke-RestMethod 'https://verejnydohlad-wny6o5yct2uf2.azurewebsites.net/api/articles'
 ```
 
 Existing Function managed identity OpenAI User permission applies to both model deployments in that account. Updating settings can restart the host. No paid AI call is made by the final public API check; the next timer run will call the models and publish only accepted articles. Inspect `MorningEdition` logs: run summaries include `collected`, `drafts`, `published`, `rejected` and `errors`. A missing deployment, exhausted budget or failed editor request never triggers an approval fallback.
+
+The newsroom package adds `PrepareEdition` at 09:00/15:00/21:00 UTC, sharing the scheduled day budget and building private approved inventory only. It does not need another Azure resource. `MorningEdition` and the existing authenticated `AdHocEdition` select/publish editions with current-source checks. `READY_ARTICLE_TARGET=9` is the desired reserve size; it is filled over bounded runs. `NEWSROOM_FLOW_ENABLED=false` restores the older feed-only orchestration; also disable it before switching off `RESEARCH_FLOW_ENABLED`. To diagnose an empty edition, inspect `Sources` → `PartitionKey=ops` → `newsroom-run|...` for `ready`, `publicationShortfall`, budget usage and `blockers`. See [the editorial desk workflow](editorial-workflow.md#planned-editions-and-private-reserve). Preparation and edition execution make previously authorized paid model calls; a public GET does not.
 
 For subsequent infrastructure deployments pass `openAiEditorDeployment=gpt-4.1 autoPublishEnabled=true` to `main.bicep`, or set these parameters in your parameter file. Their default is disabled, so deploying the defaults later will suspend automatic publication. Token pricing is not hardcoded; set `EDITOR_INPUT_USD_PER_MILLION` and `EDITOR_OUTPUT_USD_PER_MILLION` to the chosen Azure model/SKU rates if estimated cost logging is wanted.
 

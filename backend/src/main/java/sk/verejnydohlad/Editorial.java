@@ -11,11 +11,14 @@ public final class Editorial {
     public Editorial(Store store,Clock clock,int maxPublished) {this(store,clock,maxPublished,RunScope.scheduled());}
     Editorial(Store store,Clock clock,int maxPublished,RunScope scope) { this.store=store; this.clock=clock; this.maxPublished=maxPublished;this.scope=scope; }
     boolean publicationLimitReached() {
+        return publishedCount()>=maxPublished;
+    }
+    long publishedCount() {
         String day=clock.instant().atZone(ZoneId.of("Europe/Bratislava")).toLocalDate().toString();
         return store.editorial().stream().filter(a -> a.status()==Status.PUBLISHED && a.publishedAt()!=null)
             .filter(a -> scope.manual()?scope.label().equals(store.publicationScope(a.id())):
                 a.publishedAt().atZone(ZoneId.of("Europe/Bratislava")).toLocalDate().toString().equals(day) && !RunScope.manualLabel(store.publicationScope(a.id())))
-            .count()>=maxPublished;
+            .count();
     }
     public void edit(String id,Draft draft) {
         Validation.id(id); Validation.draft(draft);

@@ -16,4 +16,7 @@ public interface Ai {
     default EditorDecision review(Draft draft, List<Release> releases) { throw new UnsupportedOperationException("No chief editor configured"); }
     default String editorModel() { throw new UnsupportedOperationException("No chief editor configured"); }
     String model();
+    default List<StoryPitch> commission(List<Release> candidates,List<Article> history){throw new UnsupportedOperationException("No planning editor configured");}
+    default Draft write(StoryPitch pitch,List<Release> sources){return generate(sources);}
+    default RevisionFeedback feedback(Draft draft,List<Release> sources,List<String> issues){throw new UnsupportedOperationException("No revision triage configured");}
 }

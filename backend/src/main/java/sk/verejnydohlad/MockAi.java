@@ -26,4 +26,11 @@ public final class MockAi implements Ai {
     }
     public String editorModel() { return "mock-offline-editor"; }
     public String model() { return "mock-offline-synthetic"; }
+    public List<StoryPitch> commission(List<Release> sources,List<Article> history) {
+        return sources.stream().filter(s->s.title().startsWith("[SYNTHETIC]")).limit(6)
+            .map(s->new StoryPitch(s.id(),List.of(s.id()),"Čo uvádza syntetický testovací podklad?","EXPLAINER",80,"Synthetic fixture only")).toList();
+    }
+    public ResearchPlan plan(Draft draft,List<Release> sources){return new ResearchPlan("Čo uvádza testovací podklad?",List.of("syntetický podklad"),List.of("rrz-sk"));}
+    public ResearchBrief research(Draft draft,List<Release> sources,List<String> gaps){var r=sources.getFirst();return new ResearchBrief(false,false,"Čo uvádza testovací podklad?",List.of(new GenerationClaim(r.body(),r.id(),"body-0")),gaps,List.of());}
+    public RevisionFeedback feedback(Draft draft,List<Release> sources,List<String> issues){return new RevisionFeedback("DROP",List.of(),"Synthetic mock does not repair rejected production material.");}
 }

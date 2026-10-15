@@ -1,5 +1,13 @@
 # Architecture
 
+## Editorial desk and reserve
+
+`NEWSROOM_FLOW_ENABLED` routes scheduled/manual editions through `Newsroom`, retaining the legacy pipeline for checkpointed generation and an explicit rollback. `OfficialDiscovery` rotates supported entries in `research-sites.json` before writing, archiving original documents as context with the same URL/content deduplication. The strong planning model chooses validated `StoryPitch` objects from bounded archived inputs and history. `StoryOrder` records live in the existing Sources table's ops partition; stored Article/RunResult JSON formats are unchanged. Stable primary-document commission IDs and single parent-bound revision IDs preserve lineage across restarts and ad hoc UUIDs.
+
+`PrepareEdition` runs three times daily on UTC timers and reviews articles into private `REVIEWED` reserve without publishing. It shares scheduled concept/call budgets with `MorningEdition`; ad hoc retains its independent ledger. Edition runs choose diverse ready formats, refetch originals through `PublicationCheck`, perform fresh semantic/deterministic verification and strong editor approval, then use the existing atomic publication transaction. Current-source snapshots and decisions are bound to content/model/policy and a 15-minute recovery slot. Ready article publication uses call/publication capacity but no fresh concept reservation. Expired/failed current-source checks remain private and are excluded from usable reserve counts. `newsroom-run|...` operational records explain shortfalls, discovery gaps and budgets.
+
+Rejected originals remain immutable. Strong-model triage can commission one successor (`REVISE`) or persist an evidence hold (`HOLD`) / unsuitable-topic decision (`DROP`). The successor receives a new draft, fresh verification and separate strong approval, preserving original institutional perspectives; it cannot create another successor. No new Azure account, table, public write route or model deployment is required.
+
 The MVP uses a deterministic daily Java orchestration, a read-only Function API and a static React newspaper. It uses one Storage Account for Function runtime queues/leases/content and private application blobs/tables. No database, search service or autonomous agents.
 
 ```mermaid

@@ -17,14 +17,17 @@ public final class AutomaticEditor {
     AutomaticEditor(Store store,Ai ai,Config config,Clock clock,RunScope scope) { this.store=store;this.ai=ai;this.config=config;this.clock=clock;this.scope=scope; }
 
     Result run(Store.Guard guard,Instant deadline,List<String> errors) {
+        return run(guard,deadline,errors,true);
+    }
+    Result run(Store.Guard guard,Instant deadline,List<String> errors,boolean publish) {
         int published=0,rejected=0;
         var candidates=store.editorial().stream().filter(a -> a.phase().equals("COMPLETE") &&
-            (a.status()==Status.DRAFT || a.status()==Status.REVIEWED && isAutomatic(a)))
+            (a.status()==Status.DRAFT || publish && a.status()==Status.REVIEWED && isAutomatic(a)))
             .sorted(Comparator.comparing(Article::createdAt).thenComparing(Article::id)).toList();
         for(var candidate:candidates) {
             if(Instant.now().isAfter(deadline)) break;
             var editorial=new Editorial(store,clock,config.maxPublished(),scope);
-            if(editorial.publicationLimitReached()) break;
+            if(publish && editorial.publicationLimitReached()) break;
             try {
                 guard.check();
                 String day=scope.budgetKey(clock);
@@ -73,7 +76,7 @@ public final class AutomaticEditor {
                     guard.check(); store.updateArticle(a.state(Status.REVIEWED,audit.reviewedAt(),REVIEWER_PREFIX+model,approvalHash,null,a.blobPath()),old.version());
                 } else if(!approvalHash.equals(a.approvedHash()) || !a.reviewer().equals(REVIEWER_PREFIX+model))
                     throw new IllegalStateException("Automatic approval no longer matches article");
-                editorial.publish(a.id(),guard); published++;
+                if(publish){editorial.publish(a.id(),guard); published++;}
             } catch(Exception e) {
                 LOG.log(Level.WARNING,"Chief editor failed for article "+candidate.id(),e);
                 errors.add("editor "+candidate.id()+": "+e.getClass().getSimpleName());

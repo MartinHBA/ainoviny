@@ -8,11 +8,18 @@ import sk.verejnydohlad.Models.*;
 /** Local executable using Azure RBAC. No administrative HTTP endpoints are deployed. */
 public final class Cli {
     public static void main(String[] args) throws Exception {
-        if(args.length==0) throw new IllegalArgumentException("Commands: init, collect, run, list, inspect ID, export ID FILE, edit ID FILE, recheck ID, approve ID REVIEWER [--ack-sensitive], reject ID REVIEWER, publish ID, fixture, check-feeds");
+        if(args.length==0) throw new IllegalArgumentException("Commands: init, collect, run, prepare, newsroom, list, inspect ID, export ID FILE, edit ID FILE, recheck ID, approve ID REVIEWER [--ack-sensitive], reject ID REVIEWER, publish ID, fixture, check-feeds");
         if(args[0].equals("check-feeds")) { checkFeeds(); return; }
         App app=App.instance(); Store store=app.store; var editor=new Editorial(store,Clock.systemUTC());
         switch(args[0]) {
             case "init" -> store.initialize(SourceRegistry.load());
+            case "newsroom" -> {
+                System.out.println(Json.write(Map.of("orders",store.orders(),"articles",store.editorial().stream().map(a->Map.of("id",a.id(),"title",a.title(),"status",a.status(),"phase",a.phase(),"issues",a.issues())).toList())));
+            }
+            case "prepare" -> {
+                if(!app.config.newsroomFlow())throw new IllegalStateException("Newsroom flow is disabled");
+                System.out.println(Json.write(new Newsroom(store,app.ai,app.config,Clock.systemUTC(),app.config.aiMode().equals("azure")?new OfficialResearch():ResearchLookup.archiveOnly()).run(true,RunScope.scheduled(),true)));
+            }
             case "run" -> {
                 var scope=args.length>1?new RunScope(arg(args,1)):RunScope.adHoc();
                 System.out.println(Json.write(Map.of("scope",scope.label(),"result",app.pipeline.run(true,scope))));

@@ -97,21 +97,22 @@ final class OfficialResearch implements ResearchLookup {
         for(var a:page.select("a[href]")) {
             String url;try{url=URI.create(page.baseUri()).resolve(a.attr("href").strip()).toString();}catch(Exception e){continue;}
             String title=a.text().strip();
-            if(!allowed(url,site) || title.length()<8)continue;
+            if(!allowed(url,site) || !inScope(url,site) || title.length()<8)continue;
             url=Normalize.canonical(url.split("#",2)[0]);
             if(url.equals(site.entryUrl()) || url.matches(".*\\.(jpg|png|zip|xlsx|xls|docx|doc)(?:\\?.*)?$"))continue;
             int score=score(terms,title);if(score>0)links.putIfAbsent(url,new Link(title,url,score));
         }
         return links.values().stream().sorted(Comparator.comparingInt(Link::score).reversed().thenComparing(Link::url)).toList();
     }
-    private void retrieve(Link link,ResearchRegistry.Site site,String terms,Instant inheritedDate,Fetch fetch,Store store,Store.Guard guard,
+    void retrieve(Link link,ResearchRegistry.Site site,String terms,Instant inheritedDate,Fetch fetch,Store store,Store.Guard guard,
                           Map<String,Release> found,List<String> gaps,Instant deadline) throws Exception {
         if(!allowed(link.url(),site))throw new IllegalArgumentException("Unapproved research URL");
         String id=Normalize.hash(link.url());if(store.knownRelease(id)){found.putIfAbsent(id,store.release(id));return;}
         byte[] bytes=fetch.get(link.url(),site.hosts());
         if(isPdf(bytes)) {add(site,link.url(),link.title(),pdf(bytes),Instant.EPOCH,store,guard,found);return;}
         var page=Jsoup.parse(new String(bytes,StandardCharsets.UTF_8),link.url());
-        Instant date=date(page);String title=page.select("h1").text();if(title.isBlank())title=link.title();
+        Instant date=date(page);if(date.equals(Instant.EPOCH))date=inheritedDate;
+        String title=page.select("h1").text();if(title.isBlank())title=link.title();
         add(site,link.url(),title,body(page,site),date,store,guard,found);
         attachments(page,site,terms,inheritedDate,fetch,store,guard,found,gaps,deadline);
     }
@@ -124,7 +125,7 @@ final class OfficialResearch implements ResearchLookup {
             catch(Exception e){gaps.add(site.name()+": PDF príloha nebola spoľahlivo prečítaná.");}
         }
     }
-    private static void add(ResearchRegistry.Site site,String url,String title,String body,Instant date,Store store,Store.Guard guard,Map<String,Release> found) {
+    static void add(ResearchRegistry.Site site,String url,String title,String body,Instant date,Store store,Store.Guard guard,Map<String,Release> found) {
         if(body.length()<120 || body.length()>50000 || title.isBlank())throw new IllegalArgumentException("Invalid research document length");
         String id=Normalize.hash(url),hash=Normalize.hash(body);
         if(found.values().stream().anyMatch(s -> s.contentHash().equals(hash)))return;
@@ -138,7 +139,15 @@ final class OfficialResearch implements ResearchLookup {
         selected=selected.clone();selected.select("nav,header,footer,script,style,noscript,form,.cookie-notice,.related-posts").remove();
         return Normalize.text(selected.outerHtml());
     }
-    private static Instant date(Document doc) {
+    static boolean inScope(String url,ResearchRegistry.Site site) {
+        String path=URI.create(url).getPath().toLowerCase(Locale.ROOT);
+        return switch(site.id()) {
+            case "uhp-sr" -> path.contains("/uhp/") || path.contains("/hodnota-za-peniaze/");
+            case "iep-sr" -> path.contains("/iep/");
+            default -> true;
+        };
+    }
+    static Instant date(Document doc) {
         for(String text:List.of(doc.select("meta[property=article:published_time]").attr("content"),doc.select("meta[name=date]").attr("content"),doc.select("time[datetime]").attr("datetime")))
             try {var date=Normalize.date(text);if(!date.isAfter(Instant.now().plusSeconds(3600)))return date;}catch(Exception ignored){}
         return Instant.EPOCH;

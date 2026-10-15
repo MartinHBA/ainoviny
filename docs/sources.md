@@ -1,5 +1,7 @@
 # Official source verification
 
+These six enabled feed connectors are the regular collection layer. With the newsroom enabled, a rotating discovery pass additionally uses supported entries in [the approved research catalog](approved-research-websites.md) before concepts are written. New originals become archived context for the planning editor; unsupported registers are not silently treated as functional sources. IFP uses its verified `main[role=main]` article selector; UHP/IEP links are restricted to their analytical-unit paths. An empty feed body can trigger approved HTML extraction, including the previously failing NBS item. See [planned editions and reserve](editorial-workflow.md#planned-editions-and-private-reserve).
+
 Verified with direct HTTP requests and the Java `check-feeds` collector on **13 October 2026**. Availability can change; execute `editorial.ps1 check-feeds` before a production launch. Runtime respects current robots policies and fails a source independently.
 
 | Institution | Discovered endpoint | Enabled | Content behavior |

@@ -13,10 +13,11 @@ public final class Pipeline {
     private final Store store; private final Ai ai; private final Config config; private final Clock clock;private final ResearchLookup lookup;private final RunScope scope;
     public Pipeline(Store store,Ai ai,Config config,Clock clock) {this(store,ai,config,clock,config.aiMode().equals("azure")?new OfficialResearch():ResearchLookup.archiveOnly());}
     Pipeline(Store store,Ai ai,Config config,Clock clock,ResearchLookup lookup) {this(store,ai,config,clock,lookup,RunScope.scheduled());}
-    private Pipeline(Store store,Ai ai,Config config,Clock clock,ResearchLookup lookup,RunScope scope) { this.store=store; this.ai=ai; this.config=config; this.clock=clock;this.lookup=lookup;this.scope=scope; }
+    Pipeline(Store store,Ai ai,Config config,Clock clock,ResearchLookup lookup,RunScope scope) { this.store=store; this.ai=ai; this.config=config; this.clock=clock;this.lookup=lookup;this.scope=scope; }
     public RunResult runAdHoc(boolean collect){return run(collect,RunScope.adHoc());}
     RunResult run(boolean collect,RunScope scope){return new Pipeline(store,ai,config,clock,lookup,scope).run(collect);}
     public RunResult run(boolean collect) {
+        if(config.newsroomFlow())return new Newsroom(store,ai,config,clock,lookup).run(collect,scope,false);
         Instant start=clock.instant(); var errors=new ArrayList<String>(); int collected=0, drafts=0, published=0, rejected=0;
         try (Store.Guard guard=store.lock()) {
             Instant deadline=Instant.now().plusSeconds(480);
@@ -127,7 +128,7 @@ public final class Pipeline {
         } catch(Exception e) { errors.add("pipeline: "+e.getClass().getSimpleName()); }
         var result=new RunResult(start,clock.instant(),collected,drafts,published,rejected,List.copyOf(errors)); store.run(result,scope.label()); return result;
     }
-    private boolean process(Article initial,List<Release> group,Store.Guard guard,Instant deadline) {
+    boolean process(Article initial,List<Release> group,Store.Guard guard,Instant deadline) {
         guard.check(); if(!store.reserveArticle(budgetKey(),initial.id(),config.maxArticles())) return false;
         var stored=store.article(initial.id()); Article a=stored.value();
         if(a.phase().equals("COMPLETE")) return false;
@@ -141,6 +142,22 @@ public final class Pipeline {
             var next=new Article(a.id(),Normalize.slug(draft.title())+"-"+a.id().substring(0,12),draft.title(),draft.perex(),draft.category(),a.createdAt(),clock.instant(),null,Status.DRAFT,
                 checkpoint,verificationSources.stream().map(Release::id).toList(),verificationSources.stream().map(Release::originalUrl).distinct().toList(),a.aiModel(),
                 null,null,null,"",false,outcome.brief().sensitive(),List.of(),draft.claims(),"VERIFYING",a.editorialOrder(),a.editionDate());
+            guard.check();store.updateArticle(next,stored.version());stored=store.article(a.id());a=stored.value();
+        } else if(a.phase().equals("REVISING")) {
+            var order=Newsroom.order(store,a.id());
+            if(order==null || order.parentId()==null || !a.id().equals(Newsroom.revisionId(order.parentId())))throw new IllegalStateException("Invalid editorial revision");
+            var parent=store.article(order.parentId()).value();
+            if(parent.status()!=Status.REJECTED || parent.sensitive())throw new IllegalStateException("Revision parent unavailable");
+            var original=new Draft(parent.title(),parent.perex(),parent.category(),store.blob("articles",parent.blobPath()),parent.claims());
+            String checkpoint="editorial-revisions/"+a.id()+"/generated.json";String cached=store.optionalBlob("articles",checkpoint);
+            draft=cached==null?paid(() -> ai.correct(original,group,order.instructions()),guard,deadline):Json.read(cached,Draft.class);Validation.draft(draft);
+            var institutions=group.stream().collect(java.util.stream.Collectors.toMap(Release::id,s->ResearchRegistry.group(s.sourceId())));
+            var parentGroups=parent.claims().stream().map(c->institutions.get(c.sourceId())).filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet());
+            var revisedGroups=draft.claims().stream().map(c->institutions.get(c.sourceId())).filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet());
+            if(!revisedGroups.containsAll(parentGroups))throw new IllegalArgumentException("Editorial revision omitted an original perspective");
+            guard.check();store.putBlob("articles",checkpoint,Json.write(draft));
+            var next=new Article(a.id(),Normalize.slug(draft.title())+"-"+a.id().substring(0,12),draft.title(),draft.perex(),draft.category(),a.createdAt(),clock.instant(),null,Status.DRAFT,
+                checkpoint,a.sourceIds(),a.sourceUrls(),a.aiModel(),null,null,null,"",false,false,List.of(),draft.claims(),"VERIFYING",a.editorialOrder(),a.editionDate());
             guard.check();store.updateArticle(next,stored.version());stored=store.article(a.id());a=stored.value();
         } else if(a.phase().equals("CORRECTING")) {
             var input=Json.read(store.blob("articles","corrections/"+a.id()+"/input.json"),CorrectionInput.class);
@@ -199,7 +216,8 @@ public final class Pipeline {
         String hash=Normalize.hash(draft.markdown()), path="drafts/"+a.id()+"/"+hash+".md";
         guard.check(); store.putBlob("articles",path,draft.markdown());
         guard.check(); store.updateArticle(a.revise(draft,path,hash,verification,clock.instant()),stored.version());
-        for(String id:SourceInputs.seeds(a)) { guard.check(); store.releaseStatus(store.release(id),"DONE",null); }
+        var order=Newsroom.order(store,a.id());
+        for(String id:order==null?SourceInputs.seeds(a):List.of(order.pitch().primaryId())) { guard.check(); store.releaseStatus(store.release(id),"DONE",null); }
         return true;
     }
     private <T> T paid(Supplier<T> action,Store.Guard guard,Instant deadline) {

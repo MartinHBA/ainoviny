@@ -221,6 +221,14 @@ public final class AzureStore implements Store {
     }
     public void run(RunResult r) {run(r,"scheduled");}
     public void run(RunResult r,String scope) { sources.createEntity(new TableEntity("ops", "run|" + r.startedAt() + "|" + UUID.randomUUID()).addProperty("payload", Json.write(r)).addProperty("scope",scope)); }
+    public String operational(String key){var e=get(sources,"ops",key);return e==null?null:(String)e.getProperty("payload");}
+    public void operational(String key,String payload){sources.upsertEntity(new TableEntity("ops",key).addProperty("payload",payload));}
+    public List<StoryOrder> orders(){
+        var result=new ArrayList<StoryOrder>();
+        for(var e:query(sources,"PartitionKey eq 'ops' and RowKey ge 'story|' and RowKey lt 'story}'",100))
+            result.add(Json.read((String)e.getProperty("payload"),StoryOrder.class));
+        return result;
+    }
     private static PagedIterable<TableEntity> query(TableClient t, String filter, int pageSize) {
         return t.listEntities(new ListEntitiesOptions().setFilter(filter).setTop(pageSize), Duration.ofSeconds(30), null);
     }

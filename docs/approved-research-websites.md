@@ -2,11 +2,11 @@
 
 Stav: **katalóg a podklad implementovaného rešeršného registra**. Dátum preverenia: **14. október 2026**.
 
-Tento katalóg navrhuje 30 oficiálnych zdrojov slovenských štátnych a verejných inštitúcií vrátane nezávislých orgánov RRZ a NBS a štátom vedených registrov. Obsahuje vstupné odkazy, presné hosty a odporúčané použitie pre rešerš po vytvorení prvého konceptu článku. Noviny, súkromné médiá, politické strany, sociálne siete a mimovládne organizácie nie sú zaradené.
+Tento katalóg obsahuje 30 oficiálnych zdrojov slovenských štátnych a verejných inštitúcií vrátane nezávislých orgánov RRZ a NBS a štátom vedených registrov. Obsahuje vstupné odkazy, presné hosty a odporúčané použitie na objavovanie tém aj rešerš po vytvorení prvého konceptu článku. Noviny, súkromné médiá, politické strany, sociálne siete a mimovládne organizácie nie sú zaradené.
 
 Odkazy boli preverované cez oficiálne weby a ich dokumenty. Nejde o overenie všetkých podstránok, API, podmienok automatického sťahovania ani funkčnosti budúceho konektora. Pred zapojením treba samostatne preveriť prístup, robots.txt, dostupné formáty a extrakciu obsahu.
 
-Ranný zber zostáva opísaný v [sources.md](sources.md) a nakonfigurovaný v [sources.json](../backend/src/main/resources/sources.json). Samostatný [research-sites.json](../backend/src/main/resources/research-sites.json) teraz riadi dohľadávanie po prvom koncepte. Vyhľadávacie RSS konektory IFP, RRZ a NBS používajú overené `?s=…&feed=rss2`; ďalšie zdroje používajú feed alebo obmedzené HTML dohľadávanie. Položky `UNSUPPORTED` sa zaznamenávajú ako medzera, nie ako vykonaná kontrola. Detaily: [redakčný flow](editorial-workflow.md#new-post-concept-assistant-flow).
+Pravidelný zber šiestich feedov je opísaný v [sources.md](sources.md) a nakonfigurovaný v [sources.json](../backend/src/main/resources/sources.json). Samostatný [research-sites.json](../backend/src/main/resources/research-sites.json) riadi aj **rotačné objavovanie tém pred konceptom**, aj cielené dohľadávanie po ňom. Prieskumník postupne navštevuje podporované vstupy a nové dokumenty ukladá ako kontext pre plánujúceho editora; neobmedzuje sa na dnešné tlačové správy. Vyhľadávacie RSS konektory IFP, RRZ a NBS používajú pri cielenej rešerši `?s=…&feed=rss2`; objavovanie začína ich bežným feedom. Ďalšie zdroje používajú feed alebo obmedzené HTML dohľadávanie. Položky `UNSUPPORTED` sa zaznamenávajú ako medzera, nie ako vykonaná kontrola. Detaily: [plánovanie vydania](editorial-workflow.md#planned-editions-and-private-reserve).
 
 ## 1. Rozpočet, ekonomika a hodnotenie verejných výdavkov
 

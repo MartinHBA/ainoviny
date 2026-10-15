@@ -9,6 +9,8 @@ param openAiEditorDeployment = 'gpt-4.1'
 // This instance has the approved editor deployment; preserve automatic publication on redeploy.
 param autoPublishEnabled = true
 param researchFlowEnabled = true
+param newsroomFlowEnabled = true
+param readyArticleTarget = 9
 param maxArticlesPerDay = 6
 param maxPublishedArticlesPerDay = 3
 param maxPressReleasesPerRun = 40

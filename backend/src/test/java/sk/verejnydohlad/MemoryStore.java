@@ -10,6 +10,7 @@ class MemoryStore implements Store {
     final Map<String,Versioned<Article>> articles=new HashMap<>(); final Map<String,Article> publicArticles=new HashMap<>();
     final Map<String,Budget> budgets=new HashMap<>(); boolean locked=false, failPublish=false; int version=0;
     final Map<String,String> publicationScopes=new HashMap<>();final List<String> runScopes=new ArrayList<>();
+    final Map<String,String> operations=new HashMap<>();
     public void initialize(List<Source> s) {}
     public Guard lock() { if(locked) throw new IllegalStateException("locked"); locked=true; return new Guard(){public void check(){if(!locked)throw new IllegalStateException("lost");}public void close(){locked=false;}}; }
     public void putBlob(String c,String p,String v) { String key=c+"/"+p; if(blobs.containsKey(key)&&!blobs.get(key).equals(v))throw new IllegalStateException("immutable"); blobs.put(key,v); }
@@ -39,4 +40,7 @@ class MemoryStore implements Store {
     public void sourceChecked(Source s,Instant at) {}
     public void run(RunResult r) {}
     public void run(RunResult r,String scope){run(r);runScopes.add(scope);}
+    public String operational(String key){return operations.get(key);}
+    public void operational(String key,String payload){operations.put(key,payload);}
+    public List<StoryOrder> orders(){return operations.entrySet().stream().filter(e -> e.getKey().startsWith("story|")).map(e -> Json.read(e.getValue(),StoryOrder.class)).toList();}
 }

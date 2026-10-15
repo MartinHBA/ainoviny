@@ -22,6 +22,12 @@ public final class Functions {
     public void timer(@TimerTrigger(name="timer",schedule="%DAILY_SCHEDULE%") String timer,ExecutionContext context) {
         execute(RunScope.scheduled(),context);
     }
+    @FunctionName("PrepareEdition")
+    public void prepare(@TimerTrigger(name="timer",schedule="0 0 9,15,21 * * *") String timer,ExecutionContext context) {
+        var app=App.instance();if(!app.config.newsroomFlow())return;
+        var result=new Newsroom(app.store,app.ai,app.config,java.time.Clock.systemUTC(),app.config.aiMode().equals("azure")?new OfficialResearch():ResearchLookup.archiveOnly()).run(true,RunScope.scheduled(),true);
+        context.getLogger().info(Json.write(Map.of("mode","PREPARE","result",result)));
+    }
     @FunctionName("AdHocEdition")
     public void manual(@QueueTrigger(name="input",queueName="editorial-adhoc",connection="AzureWebJobsStorage") String input,ExecutionContext context) {
         execute(RunScope.manualInput(input),context);

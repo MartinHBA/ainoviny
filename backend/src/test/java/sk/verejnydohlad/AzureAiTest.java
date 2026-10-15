@@ -13,6 +13,19 @@ import sk.verejnydohlad.Models.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class AzureAiTest {
+    @Test void planningAndRevisionTriageUseStrongModelAndCommissionedWritingUsesWriter() {
+        var http=new OfflineHttp();var ai=new AzureAi(config(),http);var r=Fixtures.release("commission-contract");var d=new MockAi().generate(List.of(r));
+        var p=new StoryPitch(r.id(),List.of(r.id()),"Čo znamená dokument pre verejnosť?","EXPLAINER",80,"Relevant synthetic question");
+        http.payload=response(Json.write(Map.of("items",List.of(p))),"stop",null);assertEquals(List.of(p),ai.commission(List.of(r),List.of()));
+        assertEquals("chief-editor",Json.tree(http.requestBody()).path("model").asText());
+        var f=new RevisionFeedback("REVISE",List.of("Pripísať tvrdenie pôvodcovi."),"Synthetic attribution correction");
+        http.payload=response(Json.write(f),"stop",null);assertEquals(f,ai.feedback(d,List.of(r),List.of("Missing attribution")));
+        assertEquals("editorial-feedback",Json.tree(http.requestBody()).path("response_format").path("json_schema").path("name").asText());
+        var claims=d.claims().stream().map(c->new GenerationClaim(c.text(),c.sourceId(),"body-0")).toList();
+        http.payload=response(Json.write(new Generation(claims.get(0),claims.get(1),d.category(),claims.subList(2,claims.size()))),"stop",null);assertEquals(d,ai.write(p,List.of(r)));
+        assertEquals("writer-mini",Json.tree(http.requestBody()).path("model").asText());
+        var input=Json.tree(Json.tree(http.requestBody()).path("messages").get(1).path("content").asText());assertEquals(p.question(),input.path("commission").path("question").asText());
+    }
     @Test void assistantPlanAndEvaluationUseStrongModelAndRewriteUsesWriterWithoutPrivateLeads() {
         var http=new OfflineHttp();var ai=new AzureAi(config(),http);var a=ResearchFlowTest.source("adapter-primary","mf-sr");var b=ResearchFlowTest.source("adapter-independent","rrz-sk");
         var sources=List.of(a,b);var initial=new MockAi().generate(List.of(a));var plan=new ResearchPlan("Čo uvádza RRZ?",List.of("rozpočet"),List.of("rrz-sk","ifp-sr"));

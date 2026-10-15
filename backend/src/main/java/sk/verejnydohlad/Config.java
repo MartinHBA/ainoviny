@@ -5,7 +5,8 @@ import java.util.Map;
 public record Config(String storageConnection, String accountName, String aiMode, String endpoint, String deployment,
                      String apiKey, int maxArticles, int maxPublished, int maxReleases, int maxCalls, int maxTokens, int aiTimeout,
                      int minScore, String origin, double inputPrice, double outputPrice,
-                     boolean autoPublish, String editorDeployment, double editorInputPrice, double editorOutputPrice, boolean researchFlow) {
+                     boolean autoPublish, String editorDeployment, double editorInputPrice, double editorOutputPrice, boolean researchFlow,
+                     boolean newsroomFlow,int readyTarget) {
     public static Config environment() { return from(System.getenv()); }
     public static Config from(Map<String, String> env) {
         var c = new Config(env.getOrDefault("APP_STORAGE_CONNECTION_STRING", ""), env.getOrDefault("STORAGE_ACCOUNT_NAME", ""),
@@ -19,7 +20,9 @@ public record Config(String storageConnection, String accountName, String aiMode
             price(env, "AI_INPUT_USD_PER_MILLION"), price(env, "AI_OUTPUT_USD_PER_MILLION"),
             flag(env, "AUTO_PUBLISH_ENABLED"), env.getOrDefault("AZURE_OPENAI_EDITOR_DEPLOYMENT", "gpt-4.1"),
             price(env, "EDITOR_INPUT_USD_PER_MILLION"), price(env, "EDITOR_OUTPUT_USD_PER_MILLION"),
-            flag(env, "RESEARCH_FLOW_ENABLED", env.getOrDefault("AI_MODE","mock").equals("azure")));
+            flag(env, "RESEARCH_FLOW_ENABLED", env.getOrDefault("AI_MODE","mock").equals("azure")),
+            flag(env,"NEWSROOM_FLOW_ENABLED",env.getOrDefault("AI_MODE","mock").equals("azure")),number(env,"READY_ARTICLE_TARGET",9,3,12));
+        if(c.newsroomFlow && !c.researchFlow)throw new IllegalArgumentException("Newsroom requires the research flow");
         if (!c.aiMode.equals("mock") && !c.aiMode.equals("azure")) throw new IllegalArgumentException("AI_MODE must be mock or azure");
         if (c.aiMode.equals("azure")) {
             var uri = java.net.URI.create(c.endpoint);
