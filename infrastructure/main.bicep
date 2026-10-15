@@ -6,6 +6,8 @@ targetScope = 'resourceGroup'
 param namePrefix string = 'verejnydohlad'
 param location string = 'westeurope'
 param staticWebAppLocation string = 'westeurope'
+@description('Exact browser origins of this newspaper custom domains. Override with [] for an installation without these domains; no trailing slash.')
+param frontendCustomOrigins array = ['https://www.verejnydohlad.eu']
 param openAiResourceName string
 param openAiResourceGroup string = resourceGroup().name
 param openAiSubscriptionId string = subscription().subscriptionId
@@ -126,7 +128,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
       javaVersion: '21'
       ftpsState: 'Disabled'
       minTlsVersion: '1.2'
-      cors: { allowedOrigins: ['https://${staticApp.properties.defaultHostname}'], supportCredentials: false }
+      cors: { allowedOrigins: union(['https://${staticApp.properties.defaultHostname}'], frontendCustomOrigins), supportCredentials: false }
       appSettings: [
         { name: 'AzureWebJobsStorage', value: storageConnection }
         { name: 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING', value: storageConnection }

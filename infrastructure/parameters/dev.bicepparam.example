@@ -1,6 +1,7 @@
 using '../main.bicep'
 param namePrefix = 'verejnydohlad'
 param location = 'westeurope'
+param frontendCustomOrigins = ['https://www.verejnydohlad.eu']
 param openAiResourceName = 'myAItest'
 param openAiResourceGroup = 'AI'
 param openAiEndpoint = 'https://myaitest.openai.azure.com/'

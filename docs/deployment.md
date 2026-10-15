@@ -10,7 +10,14 @@ Azure OpenAI is **existing by default**: pass its resource name, group, subscrip
 
 The prompt's four-service limit and monitoring requirement are met by using **existing Application Insights** via secure connection-string parameter. If no component exists, the main template can explicitly create an optional Insights component with `createApplicationInsights=true` against an **existing** Log Analytics workspace ID. This is the documented monitoring exception to the four-service limit; it creates neither another Storage Account nor a new Log Analytics workspace. Never enable that option without reviewing monitoring cost/retention. Production should provide monitoring; leaving the connection empty provides host logs only.
 
-SWA Free cannot link a bring-your-own Function App to its built-in `/api` route. Deploy static assets with `VITE_API_BASE_URL=https://FUNCTION_APP.azurewebsites.net/api`. Function CORS contains only the returned SWA origin. Add a custom-domain origin explicitly if needed. Do not enable credentials or wildcard CORS. See [Microsoft's integration restriction](https://learn.microsoft.com/azure/static-web-apps/functions-bring-your-own).
+SWA Free cannot link a bring-your-own Function App to its built-in `/api` route. Deploy static assets with `VITE_API_BASE_URL=https://FUNCTION_APP.azurewebsites.net/api`. Function CORS contains the returned SWA origin plus `frontendCustomOrigins`, which defaults to this newspaper's `https://www.verejnydohlad.eu`. Override that array for a different installation, using exact HTTPS origins without paths or trailing slashes; `[]` enables only the SWA origin. Binding a custom hostname in SWA does not automatically allow that hostname in the separate Function App's CORS policy. Do not enable credentials or wildcard CORS. See [Microsoft's integration restriction](https://learn.microsoft.com/azure/static-web-apps/functions-bring-your-own).
+
+For an already deployed instance, adding the domain below updates CORS immediately and preserves the SWA origin. Keep `frontendCustomOrigins` in sync so a subsequent infrastructure deployment retains it; no frontend rebuild is required when the Function API URL remains the same.
+
+```powershell
+az functionapp cors add --resource-group verejny-dohlad --name verejnydohlad-wny6o5yct2uf2 --allowed-origins 'https://www.verejnydohlad.eu'
+az functionapp cors show --resource-group verejny-dohlad --name verejnydohlad-wny6o5yct2uf2
+```
 
 ## Deployment order
 
