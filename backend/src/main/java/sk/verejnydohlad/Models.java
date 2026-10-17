@@ -25,6 +25,9 @@ public final class Models {
     public record StoryPitch(String primaryId,List<String> sourceIds,String question,String kind,int score,String reason) {}
     public record StoryOrder(String articleId,StoryPitch pitch,String parentId,Instant plannedAt,Instant expiresAt,List<String> instructions) {}
     public record RevisionFeedback(String action,List<String> instructions,String reason) {}
+    public record EditionItem(String id,String title,String perex,String category,String markdown,List<String> sourceIds) {}
+    public record EditionGroup(String action,List<String> articleIds,String publishedArticleId,List<String> instructions,String reason) {}
+    public record EditionPlan(List<EditionGroup> groups) {}
     public record Article(String id, String slug, String title, String perex, String category, Instant createdAt,
                           Instant generatedAt, Instant publishedAt, Status status, String blobPath,
                           List<String> sourceIds, List<String> sourceUrls, String aiModel,

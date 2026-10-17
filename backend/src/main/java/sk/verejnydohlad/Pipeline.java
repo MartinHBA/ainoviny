@@ -143,6 +143,16 @@ public final class Pipeline {
                 checkpoint,verificationSources.stream().map(Release::id).toList(),verificationSources.stream().map(Release::originalUrl).distinct().toList(),a.aiModel(),
                 null,null,null,"",false,outcome.brief().sensitive(),List.of(),draft.claims(),"VERIFYING",a.editorialOrder(),a.editionDate());
             guard.check();store.updateArticle(next,stored.version());stored=store.article(a.id());a=stored.value();
+        } else if(a.phase().equals("MERGING")) {
+            var input=EditionDesk.input(store,a.id(),ai,guard);
+            if(!clock.instant().isBefore(input.expiresAt()) || !a.sourceIds().equals(input.sources().stream().map(Release::id).toList()))throw new IllegalStateException("Invalid edition merge sources or expiry");
+            String checkpoint="edition-merges/"+a.id()+"/generated.json";String cached=store.optionalBlob("articles",checkpoint);
+            draft=cached==null?paid(()->ai.merge(input.parents().stream().map(EditionDesk.Parent::draft).toList(),group,input.instructions()),guard,deadline):Json.read(cached,Draft.class);
+            guard.check();if(cached==null)store.putBlob("articles",checkpoint,Json.write(draft));Validation.draft(draft);
+            for(var parent:input.parents())if(!DraftRepair.preservesPerspectives(parent.draft(),draft,group))throw new IllegalArgumentException("Edition merge omitted an original perspective");
+            var next=new Article(a.id(),Normalize.slug(draft.title())+"-"+a.id().substring(0,12),draft.title(),draft.perex(),draft.category(),a.createdAt(),clock.instant(),null,Status.DRAFT,
+                checkpoint,a.sourceIds(),a.sourceUrls(),a.aiModel(),null,null,null,"",false,false,List.of(),draft.claims(),"VERIFYING",a.editorialOrder(),a.editionDate());
+            guard.check();store.updateArticle(next,stored.version());stored=store.article(a.id());a=stored.value();
         } else if(a.phase().equals("REVISING")) {
             var order=Newsroom.order(store,a.id());
             if(order==null || order.parentId()==null || !a.id().equals(Newsroom.revisionId(order.parentId())))throw new IllegalStateException("Invalid editorial revision");
@@ -244,7 +254,9 @@ public final class Pipeline {
             "Researched draft omitted a relevant institution","Editorial revision omitted an original perspective",
             "Claim map too large","Correction source input budget exceeded","Research input budget exceeded","Invalid researched claim","Invalid researched citation",
             "Invalid chief editor decision","Contradictory chief editor approval","Invalid chief editor reason","Invalid commissions",
-            "Current original cannot be extracted","Current original text outside bounds","Current original absent from official feed","Freshness budget reached");
+            "Current original cannot be extracted","Current original text outside bounds","Current original absent from official feed","Freshness budget reached",
+            "Invalid edition plan","Invalid edition group","Invalid edition merge","Invalid edition duplicate","Invalid edition merge audit",
+            "Edition merge omitted an original perspective","Edition merge parent changed","Edition merge source budget exceeded","Invalid edition merge sources or expiry");
         return error.getClass().getSimpleName()+(message!=null && safe.contains(message)?": "+message:"");
     }
 }

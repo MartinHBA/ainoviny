@@ -20,7 +20,11 @@ flowchart TD
     E --> Z[Súkromná zásoba schválených článkov]
     E --> O[Jedno vrátenie opraviteľného textu redaktorovi]
     O --> V
-    Z --> K[Ranný alebo ad hoc výber a nové načítanie zdrojov]
+    Z --> B[Editor vydania: porovnanie tém a dnešných publikácií]
+    B --> K[Výber odlišných článkov a nové načítanie zdrojov]
+    B --> M[Redaktor: zlúčenie prekrývajúcich sa konceptov]
+    M --> V
+    B --> Q[Súkromné odloženie už pokrytej témy]
     K --> J[Nové overenie a samostatné schválenie aktuálnych podkladov]
     J --> T[Atómové publikovanie najviac troch článkov]
     T --> API[Verejné API]
@@ -42,10 +46,11 @@ Pri rozpočte napríklad prvý koncept vychádza zo správy MF. Asistent dohľad
 |---|---|---|
 | Výber tém | `gpt-4.1-mini` | Význam správy a zoskupenie tém. |
 | Plánujúci editor | `gpt-4.1` | Objednávky článkov z archívu a nových dokumentov; história a pestrosť vydania. |
-| Redaktor | `gpt-4.1-mini` | Prvý koncept a prepracovanie po rešerši. |
+| Redaktor | `gpt-4.1-mini` | Prvý koncept, prepracovanie po rešerši a zlúčenie podľa pokynov editora vydania. |
 | Rešeršný asistent | `gpt-4.1` | Plán dohľadávania a zhodnotenie získaných dokumentov. |
 | Overovateľ | `gpt-4.1-mini` | Samostatné porovnanie výsledného článku so zdrojmi. |
 | Hlavný AI editor | `gpt-4.1` | Záverečné rozhodnutie o publikovaní. |
+| Editor vydania | `gpt-4.1` | Spoločné posúdenie prekryvu článkov, zadanie zlúčenia a odloženie tém už vydaných v ten deň. |
 
 Roly sú oddelené volania modelov, nie otvorené autonómne slučky. HTTP dohľadávanie riadi Java kód. Modely neposielajú e-maily, nekontaktujú subjekty a nemajú priamy prístup k publikovaniu alebo tajným údajom.
 
@@ -63,6 +68,10 @@ Platí presný HTTPS zoznam hostov, kontrola robots, zákaz presmerovaní a súk
 
 **Príprava a ranné vydanie sú oddelené.** `PrepareEdition` beží o 09:00, 15:00 a 21:00 UTC a dopĺňa súkromnú zásobu s cieľom deviatich schválených článkov (`READY_ARTICLE_TARGET=9`). V lete je to 11:00, 17:00 a 23:00 v Bratislave. `MorningEdition` ostáva o 03:00 UTC (v lete 05:00, v zime 04:00); spolu s `AdHocEdition` publikuje najviac tri schválené aktuálne články a podľa potreby dopracuje ďalšie. Príprava nikdy nepublikuje. Všetky plánované behy zdieľajú denných 6 konceptov a 40 AI pokusov; nejde o nový rozpočet na každé spustenie.
 
+**Editor vydania posudzuje články spoločne.** `gpt-4.1` porovná celé texty pripravených článkov a dnešné publikácie zo všetkých režimov. Pri rovnakej udalosti alebo ústrednej otázke môže vrátiť dva až tri koncepty redaktorovi (`gpt-4.1-mini`) na jeden ucelený článok. Napríklad výhrady NKÚ a RRZ k tomu istému rozpočtu spolu s postojom vlády patria spravidla do jedného spracovania. Samotná zmienka o rozpočte či RRZ nestačí: odlišná udalosť alebo podstatný nový vývoj môžu vyjsť samostatne. Téma už pokrytá dnešným publikovaným článkom sa môže odložiť ako duplicita. Existujúce publikácie zostávajú v archíve.
+
+Nové koncepty sa pred publikovaním zbierajú do spoločnej dávky. Zlúčený koncept má vlastné ID, pôvodné podklady a pokyny editora; musí zachovať podporené inštitucionálne pohľady a prejsť novým overením, samostatným editorom aj aktuálnou kontrolou zdrojov. Pôvodné koncepty zostávajú súkromné aj po chybe či vyčerpaní rozpočtu. Výsledkom môže byť jeden článok namiesto dvoch; počet sa nedopĺňa duplicitami. Zlúčenie spotrebuje jeden z existujúcich šiestich konceptov. Nové objednávky nechávajú jeden slot na prípadné zlúčenie; celkové stropy 6/3/40 sa nemenia. Príprava zásoby rovnakou kontrolou rieši prekryvy vopred.
+
 Spravodajská objednávka platí najviac dva dni, analytická a vysvetľujúca sedem dní. Pred vydaním sa všetky skutočne citované pôvodné odkazy znova načítajú a výsledný text prejde novým overovateľom aj silnejším editorom nad aktuálnymi podkladmi. Necitované dokumenty konzultované pri rešerši ostávajú v histórii a podkladoch článku; ich neskoršia nedostupnosť sama osebe nezablokuje publikovanie. Ak čitateľný obsah chýba v HTML, kontrola môže načítať aktuálny oficiálny RSS a použiť iba položku s presne rovnakým kanonickým odkazom a dostatočným textom; starý uložený obsah nie je náhradou aktuálneho načítania. Výsledky sa na obnovu prerušeného publikovania ukladajú do 15-minútových checkpointov. Chýbajúci citovaný zdroj, zmenené dôkazy, citlivé tvrdenie, vypršanie platnosti či vyčerpaný rozpočet článok odložia. Táto kontrola citovaných odkazov a ohraničený prieskum nie sú úplným sledovaním všetkých neskorších udalostí k téme.
 
 Zamietnutie zostáva v histórii. Samostatná editorská spätná väzba rozlišuje `REVISE` (jedna nová verzia s pokynmi), `HOLD` (chýbajúce dôkazy) a `DROP` (nevhodná téma). Nová verzia dostane vlastné ID, nové overenie a nezávislé schválenie; nemôže vytvoriť ďalší opravný reťazec. Citlivé zamietnutia sa automaticky neprepisujú. Chýbajúci dokument alebo nový podstatný zdroj môžu viesť k novej doloženej objednávke, nie k opakovanému prepisovaniu bez dôkazov.
@@ -71,7 +80,7 @@ Zamietnutie zostáva v histórii. Samostatná editorská spätná väzba rozliš
 
 Redaktor dostáva krátke označené úryvky vybrané z celého uloženého dokumentu, aj z pasáží za prvými 10 000 znakmi. Systém ich prijíma podľa rovnakých stabilných ID. Zadanie prepracovania žiada najviac desať citácií v článku, opravné zadanie osem a kratší text; cieľom je zmestiť sa do existujúceho limitu odpovede aj mapy dôkazov. Tieto pokyny modelu nenahrádzajú povinnú kontrolu výsledku.
 
-Predvolené limity sú **6 konceptov, 3 publikácie a 40 pokusov o AI volanie denne**. Zahŕňajú opravy, odmietnuté a prerušené pokusy; publikácie sa počítajú podľa skutočného dátumu v Bratislave a zahŕňajú aj ručné publikovanie. Sú to maximá, nie záruka konkrétneho počtu článkov. Nová objednávka obvykle potrebuje päť volaní na tvorbu a rešerš, jedno schválenie zásoby a dve aktuálne kontroly pri publikovaní. Plánovanie, spätná väzba a opakované pokusy sú navyše; tri nové úspešné články majú základ 25 volaní vrátane jedného plánovania. Pripravené články pri vydaní nespotrebujú nový koncept, ale aktuálne kontroly áno. Zásoba sa dopĺňa postupne.
+Predvolené limity sú **6 konceptov, 3 publikácie a 40 pokusov o AI volanie denne**. Zahŕňajú opravy, zlúčenia, odmietnuté a prerušené pokusy; publikácie sa počítajú podľa skutočného dátumu v Bratislave a zahŕňajú aj ručné publikovanie. Sú to maximá, nie záruka konkrétneho počtu článkov. Nová objednávka obvykle potrebuje päť volaní na tvorbu a rešerš, jedno schválenie zásoby a dve aktuálne kontroly pri publikovaní. Tri nové odlišné úspešné články majú základ 26 volaní vrátane jedného plánovania a spoločného posúdenia vydania. Zlúčenie, spätná väzba a opakované pokusy sú navyše; nezmenené posúdenie dávky sa obnoví z checkpointu. Pripravené články pri vydaní nespotrebujú nový koncept, ale spoločný výber a aktuálne kontroly áno. Zásoba sa dopĺňa postupne.
 
 **Ad hoc beh má samostatný rozpočet a nečerpá denné limity.** Používa rovnaké nastavené stropy (predvolene 6 konceptov / 3 publikácie / 40 AI volaní) na konkrétny manuálny beh. Jeho publikácie neznižujú ranný publikačný limit a môže bežať aj po vyčerpaní dnešného rozpočtu. Každý beh má UUID; opakovanie rovnakého UUID zachová jeho počítadlá a checkpointy. Nové UUID znamená nový samostatný rozpočet. Deduplikácia, globálny lease, overenie a AI editor platia ďalej. Platené AI volania sa stále účtujú; doterajšie denné počty sa spätne nemažú ani nepresúvajú.
 

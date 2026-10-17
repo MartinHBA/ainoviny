@@ -19,4 +19,6 @@ public interface Ai {
     default List<StoryPitch> commission(List<Release> candidates,List<Article> history){throw new UnsupportedOperationException("No planning editor configured");}
     default Draft write(StoryPitch pitch,List<Release> sources){return generate(sources);}
     default RevisionFeedback feedback(Draft draft,List<Release> sources,List<String> issues){throw new UnsupportedOperationException("No revision triage configured");}
+    default EditionPlan edition(List<EditionItem> pending,List<EditionItem> published){throw new UnsupportedOperationException("No edition editor configured");}
+    default Draft merge(List<Draft> drafts,List<Release> sources,List<String> instructions){throw new UnsupportedOperationException("No merging writer configured");}
 }

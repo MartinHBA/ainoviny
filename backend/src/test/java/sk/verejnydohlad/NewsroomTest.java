@@ -20,6 +20,7 @@ class NewsroomTest {
     static class DeskAi implements Ai {
         final MockAi mock=new MockAi();int planning,writing,feedback,corrections,reviews,checks;boolean rejectFirst,failWriting,failCorrection,rejectCorrected,rejectFirstReview,sensitive;
         String disposition="REVISE";
+        public EditionPlan edition(List<EditionItem> pending,List<EditionItem> published){return mock.edition(pending,published);}
         public String model(){return mock.model();}public String editorModel(){return mock.editorModel();}
         public Map<String,Analysis> analyze(List<Release> r){return mock.analyze(r);}
         public List<StoryPitch> commission(List<Release> docs,List<Article> history){planning++;var result=new ArrayList<StoryPitch>();int i=0;for(var r:docs.stream().limit(6).toList())result.add(new StoryPitch(r.id(),List.of(r.id()),"Čo tento dokument znamená pre verejnosť?",List.of("NEWS","ANALYSIS","EXPLAINER").get(i++%3),90,"Useful synthetic commission"));return result;}
@@ -41,7 +42,7 @@ class NewsroomTest {
         var s=sources(3);var ai=new DeskAi();var prepared=desk(s,ai).run(false,RunScope.scheduled(),true);
         assertEquals(0,prepared.published());assertEquals(3,prepared.drafts());assertTrue(s.publicArticles.isEmpty());assertTrue(s.editorial().stream().allMatch(a->a.status()==Status.REVIEWED));
         int writing=ai.writing;var next=Clock.offset(Fixtures.CLOCK,Duration.ofDays(1));var result=desk(s,ai,config(),next,PublicationCheck.offline()).run(false,RunScope.scheduled(),false);
-        assertEquals(3,result.published());assertEquals(writing,ai.writing);assertEquals(0,s.budget("2026-10-13").articleIds().size());assertEquals(6,s.budget("2026-10-13").calls());
+        assertEquals(3,result.published());assertEquals(writing,ai.writing);assertEquals(0,s.budget("2026-10-13").articleIds().size());assertEquals(7,s.budget("2026-10-13").calls());
         assertTrue(s.editorial().stream().allMatch(a->a.editionDate().equals("2026-10-13")));
     }
     @Test void reserveTargetStopsPreparationAndDoesNotSpendOnAlreadyApprovedInventory(){var s=sources(5);var ai=new DeskAi();var d=desk(s,ai,config("READY_ARTICLE_TARGET","3"),Fixtures.CLOCK,PublicationCheck.offline());d.run(false,RunScope.scheduled(),true);assertEquals(3,s.editorial().size());var budget=s.budget("2026-10-12");d.run(false,RunScope.scheduled(),true);assertEquals(budget,s.budget("2026-10-12"));assertEquals(3,ai.writing);}

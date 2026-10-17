@@ -19,6 +19,8 @@ final class Newsroom {
     record Summary(String scope,String mode,RunResult result,int planned,int ready,int held,int publicationShortfall,int calls,int concepts,List<String> blockers,List<String> discoveryGaps){}
     final Store store;final Ai ai;final Config config;final Clock clock;final ResearchLookup lookup;final Discovery discovery;final PublicationCheck freshness;
     private Map<String,StoryOrder> knownOrders=new HashMap<>();
+    private int mergedDrafts,mergePlanned;
+    private final Set<String> attemptedMerges=new HashSet<>();
     Newsroom(Store store,Ai ai,Config config,Clock clock,ResearchLookup lookup) {
         this(store,ai,config,clock,lookup,config.aiMode().equals("azure")?new OfficialDiscovery():(s,g,d)->new Discovery.Result(0,0,List.of()),
             config.aiMode().equals("azure")?PublicationCheck.official():PublicationCheck.offline());
@@ -34,7 +36,7 @@ final class Newsroom {
         var order=commissioned(a.id());
         return order!=null?clock.instant().isBefore(order.expiresAt()):a.generatedAt()!=null && a.generatedAt().isAfter(clock.instant().minus(Duration.ofDays(2)));
     }
-    private int ready(){return (int)store.editorial().stream().filter(a->a.status()==Status.REVIEWED && AutomaticEditor.isAutomatic(a) && valid(a) && store.operational("reserve-hold|"+a.id())==null).count();}
+    private int ready(){return (int)store.editorial().stream().filter(a->a.status()==Status.REVIEWED && AutomaticEditor.isAutomatic(a) && valid(a) && !EditionDesk.routed(store,a.id()) && store.operational("reserve-hold|"+a.id())==null).count();}
     private boolean needed(boolean prepare,RunScope scope){return prepare?ready()<config.readyTarget():!new Editorial(store,clock,config.maxPublished(),scope).publicationLimitReached();}
     private <T>T paid(Supplier<T> action,RunScope scope,Store.Guard guard,Instant deadline) {
         guard.check();if(Instant.now().plusSeconds(config.aiTimeout()+15).isAfter(deadline))throw new IllegalStateException("Newsroom time budget reached");
@@ -44,10 +46,17 @@ final class Newsroom {
         Instant started=clock.instant();var errors=new ArrayList<String>();var blockers=new ArrayList<String>();var gaps=new ArrayList<String>();
         var attemptedPublications=new HashSet<String>();
         int collected=0,planned=0,drafts=0,published=0,rejected=0;
+        mergedDrafts=0;mergePlanned=0;attemptedMerges.clear();
         try(var guard=store.lock()) {
             knownOrders=new HashMap<>();store.orders().forEach(o->knownOrders.put(o.articleId(),o));
+            // Finish parent routing from an interrupted merge before any reserve article can publish.
+            for(var order:knownOrders.values()) {
+                var child=store.article(order.articleId());
+                if(store.operational("merge|"+order.articleId())!=null && (child==null || child.value().status()==Status.DRAFT && !child.value().phase().equals("COMPLETE")))
+                    EditionDesk.input(store,order.articleId(),ai,guard);
+            }
             Instant deadline=Instant.now().plusSeconds(480);
-            if(!prepare && config.autoPublish())published+=publishReserve(scope,guard,deadline,blockers,attemptedPublications);
+            if(!prepare && config.autoPublish())published+=publishReserve(scope,guard,deadline,blockers,attemptedPublications,errors);
             if(collect && needed(prepare,scope)) {
                 collected+=new Collector().collect(SourceRegistry.load(),store,config.maxReleases(),guard,Instant.now().plusSeconds(90),errors);
                 var found=discovery.scan(store,guard,deadline);collected+=found.documents();gaps.addAll(found.gaps());
@@ -65,6 +74,7 @@ final class Newsroom {
                 var version=store.article(order.articleId());
                 if(version==null) {if(!reserve(order,scope,guard))continue;version=store.article(order.articleId());}
                 if(version.value().status()!=Status.DRAFT)continue;
+                if(store.operational("merge|"+order.articleId())!=null && !attemptedMerges.add(order.articleId()))continue;
                 if(!version.value().phase().equals("COMPLETE")) {
                     try {if(process(version.value(),scope,guard,deadline))drafts++;}
                     catch(Exception e){errors.add("resume "+order.articleId()+": "+Pipeline.errorDescription(e));}
@@ -72,7 +82,7 @@ final class Newsroom {
             }
             // Also adopt already completed legacy drafts; published/rejected originals remain untouched.
             if(config.autoPublish())rejected+=new AutomaticEditor(store,ai,config,clock,scope).run(guard,deadline,errors,false).rejected();
-            if(!prepare && config.autoPublish())published+=publishReserve(scope,guard,deadline,blockers,attemptedPublications);
+            if(!prepare && config.autoPublish())published+=publishReserve(scope,guard,deadline,blockers,attemptedPublications,errors);
             if(needed(prepare,scope) && room(scope) && Instant.now().plusSeconds(90).isBefore(deadline)) {
                 var candidates=candidates();
                 if(candidates.isEmpty())blockers.add("No unused eligible document for a new commission.");
@@ -85,6 +95,8 @@ final class Newsroom {
                         guard.check();store.putBlob("articles",path,Json.write(pitches));
                     } else {pitches=Arrays.asList(Json.read(raw,StoryPitch[].class));validate(pitches,candidates);}
                     for(var pitch:diverse(pitches)) {
+                        if(!prepare && ready()>=config.maxPublished()-new Editorial(store,clock,config.maxPublished(),scope).publishedCount())break;
+                        if(store.budget(scope.budgetKey(clock)).articleIds().size()>=Math.max(1,config.maxArticles()-1))break;
                         if(pitch.score()<config.minScore() || !needed(prepare,scope) || !room(scope) || Instant.now().plusSeconds(65).isAfter(deadline))continue;
                         if(pitch.kind().equals("NEWS") && store.release(pitch.primaryId()).publishedAt().isBefore(clock.instant().minus(Duration.ofDays(7))))continue;
                         String id=storyId(pitch);if(store.article(id)!=null)continue;
@@ -94,15 +106,16 @@ final class Newsroom {
                         try{if(process(store.article(id).value(),scope,guard,deadline))drafts++;}
                         catch(Exception e){errors.add("commission "+id+": "+Pipeline.errorDescription(e));}
                         if(config.autoPublish())rejected+=new AutomaticEditor(store,ai,config,clock,scope).run(guard,deadline,errors,false).rejected();
-                        if(!prepare && config.autoPublish())published+=publishReserve(scope,guard,deadline,blockers,attemptedPublications);
                     }
                 }
             }
+            if(!prepare && config.autoPublish())published+=publishReserve(scope,guard,deadline,blockers,attemptedPublications,errors);
             // Two bounded returns per run at most; no successor may itself start a revision chain.
             int returns=0,triaged=0;
             for(var parent:store.editorial().stream().filter(a->a.status()==Status.REJECTED).sorted(Comparator.comparing(Article::createdAt).reversed()).toList()) {
                 if(returns>=2 || triaged>=2 || !needed(prepare,scope) || !room(scope) || Instant.now().plusSeconds(90).isAfter(deadline))break;
                 if(parent.sensitive() || parent.createdAt().isBefore(clock.instant().minus(Duration.ofDays(30))))continue;
+                if(EditionDesk.routed(store,parent.id()) || store.operational("merge|"+parent.id())!=null)continue;
                 var oldOrder=commissioned(parent.id());if(oldOrder!=null && oldOrder.parentId()!=null)continue;
                 if(parent.id().equals(SourceInputs.correctionId(SourceInputs.topicId(SourceInputs.seeds(parent)))))continue;
                 String id=revisionId(parent.id());if(store.article(id)!=null)continue;
@@ -121,18 +134,21 @@ final class Newsroom {
                     if(!reserve(order,scope,guard))break;returns++;planned++;
                     if(process(store.article(id).value(),scope,guard,deadline))drafts++;
                     if(config.autoPublish())rejected+=new AutomaticEditor(store,ai,config,clock,scope).run(guard,deadline,errors,false).rejected();
-                    if(!prepare && config.autoPublish())published+=publishReserve(scope,guard,deadline,blockers,attemptedPublications);
                 }catch(Exception e){errors.add("revision "+parent.id()+": "+Pipeline.errorDescription(e));}
+            }
+            if(config.autoPublish()) {
+                if(prepare)consolidate(scope,guard,deadline,blockers,errors);
+                else published+=publishReserve(scope,guard,deadline,blockers,attemptedPublications,errors);
             }
             var budget=store.budget(scope.budgetKey(clock));
             if(budget.calls()>=config.maxCalls())blockers.add("AI call budget reached.");
             if(budget.articleIds().size()>=config.maxArticles())blockers.add("Concept attempt budget reached.");
             if(!prepare && needed(false,scope))blockers.add("Not enough approved current articles for the edition; quality gates were retained.");
         }catch(Exception e){errors.add("newsroom: "+Pipeline.errorDescription(e));}
-        var result=new RunResult(started,clock.instant(),collected,drafts,published,rejected,List.copyOf(errors));
+        var result=new RunResult(started,clock.instant(),collected,drafts+mergedDrafts,published,rejected,List.copyOf(errors));
         var budget=store.budget(scope.budgetKey(clock));int held=(int)store.editorial().stream().filter(a->a.status()!=Status.PUBLISHED &&
             (a.status()==Status.REVIEWED && !valid(a) || store.operational("reserve-hold|"+a.id())!=null || Optional.ofNullable(store.operational("feedback|"+a.id())).map(v->Json.read(v,RevisionFeedback.class).action().equals("HOLD")).orElse(false))).count();
-        var summary=new Summary(scope.label(),prepare?"PREPARE":"EDITION",result,planned,ready(),held,prepare?0:(int)Math.max(0,config.maxPublished()-new Editorial(store,clock,config.maxPublished(),scope).publishedCount()),budget.calls(),budget.articleIds().size(),blockers.stream().distinct().toList(),List.copyOf(gaps));
+        var summary=new Summary(scope.label(),prepare?"PREPARE":"EDITION",result,planned+mergePlanned,ready(),held,prepare?0:(int)Math.max(0,config.maxPublished()-new Editorial(store,clock,config.maxPublished(),scope).publishedCount()),budget.calls(),budget.articleIds().size(),blockers.stream().distinct().toList(),List.copyOf(gaps));
         store.run(result,scope.label());store.operational("newsroom-run|"+started+"|"+UUID.randomUUID(),Json.write(summary));LOG.info(Json.write(summary));return result;
     }
     private boolean room(RunScope scope){var b=store.budget(scope.budgetKey(clock));return b.calls()<config.maxCalls() && b.articleIds().size()<config.maxArticles();}
@@ -144,7 +160,7 @@ final class Newsroom {
         var sources=order.pitch().sourceIds().stream().map(store::release).toList();
         guard.check();store.createArticle(new Article(order.articleId(),"sprava-"+order.articleId().substring(0,16),"Pripravuje sa článok","","Slovensko",order.plannedAt(),null,null,Status.DRAFT,"",
             sources.stream().map(Release::id).toList(),sources.stream().map(Release::originalUrl).toList(),order.parentId()==null || ai.model().startsWith("mock")?ai.model():ai.editorModel(),null,null,null,"",false,false,List.of(),List.of(),
-            order.parentId()==null?"DRAFTING":"REVISING",store.budget(scope.budgetKey(clock)).articleIds().indexOf(order.articleId()),RunScope.date(clock)));
+            store.operational("merge|"+order.articleId())!=null?"MERGING":order.parentId()==null?"DRAFTING":"REVISING",store.budget(scope.budgetKey(clock)).articleIds().indexOf(order.articleId()),RunScope.date(clock)));
         return true;
     }
     private boolean process(Article article,RunScope scope,Store.Guard guard,Instant deadline) {
@@ -174,8 +190,10 @@ final class Newsroom {
         while(!remaining.isEmpty()){var next=remaining.stream().filter(p->!kinds.contains(p.kind())).findFirst().orElse(remaining.getFirst());remaining.remove(next);result.add(next);kinds.add(next.kind());}
         return result;
     }
-    private int publishReserve(RunScope scope,Store.Guard guard,Instant deadline,List<String> blockers,Set<String> attempted) {
-        int count=0;var candidates=store.editorial().stream().filter(a->a.status()==Status.REVIEWED && AutomaticEditor.isAutomatic(a)).toList();
+    private int publishReserve(RunScope scope,Store.Guard guard,Instant deadline,List<String> blockers,Set<String> attempted,List<String> errors) {
+        if(!needed(false,scope))return 0;
+        consolidate(scope,guard,deadline,blockers,errors);
+        int count=0;var candidates=store.editorial().stream().filter(a->a.status()==Status.REVIEWED && AutomaticEditor.isAutomatic(a) && !EditionDesk.routed(store,a.id())).toList();
         var byId=new HashMap<String,Article>();var pitches=new ArrayList<StoryPitch>();
         for(var a:candidates) {
             if(!valid(a)){blockers.add("Expired reserve article: "+a.id());continue;}
@@ -215,6 +233,21 @@ final class Newsroom {
             }catch(Exception e){hold(a,"Reserve publication deferred ("+Pipeline.errorDescription(e)+")",guard,blockers);}
         }
         return count;
+    }
+    private void consolidate(RunScope scope,Store.Guard guard,Instant deadline,List<String> blockers,List<String> errors) {
+        var children=EditionDesk.prepare(store,ai,config,clock,scope.budgetKey(clock),guard,new EditionDesk.Paid(){
+            public <T>T call(Supplier<T> action){return paid(action,scope,guard,deadline);}
+        },blockers);
+        for(String id:children) {
+            var order=order(store,id);knownOrders.put(id,order);
+            boolean created=store.article(id)==null;
+            if(!reserve(order,scope,guard))continue;
+            if(created)mergePlanned++;
+            if(!attemptedMerges.add(id))continue;
+            try{if(process(store.article(id).value(),scope,guard,deadline))mergedDrafts++;}
+            catch(Exception e){errors.add("merge "+id+": "+Pipeline.errorDescription(e));}
+        }
+        if(!children.isEmpty())new AutomaticEditor(store,ai,config,clock,scope).run(guard,deadline,errors,false);
     }
     private void hold(Article article,String reason,Store.Guard guard,List<String> blockers){
         guard.check();store.operational("reserve-hold|"+article.id(),Json.write(Map.of("reason",reason,"at",clock.instant())));blockers.add(reason+": "+article.id());

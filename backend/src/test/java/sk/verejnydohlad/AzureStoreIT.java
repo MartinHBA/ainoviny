@@ -11,6 +11,22 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @EnabledIfSystemProperty(named="storage.integration",matches="true")
 class AzureStoreIT {
+    @Test void sdkEditionMergePersistsRoutesAndPublishesOneFreshlyReviewedSuccessor(){
+        var config=NewsroomTest.config("MAX_AI_CALLS_PER_DAY","6","MAX_PUBLISHED_ARTICLES_PER_DAY","1");var store=new AzureStore(config);store.initialize(List.of());
+        var clock=Clock.offset(Fixtures.CLOCK,Duration.ofDays(5));var parents=new ArrayList<Article>();var mock=new MockAi();
+        for(int i=0;i<2;i++) {
+            var r=Fixtures.release("edition-merge-sdk-"+i+"-"+UUID.randomUUID());store.collect(r);var d=mock.generate(List.of(r));String id=Normalize.hash("sdk-edition|"+r.id()),path="drafts/"+id+"/original.md";store.putBlob("articles",path,d.markdown());
+            var a=new Article(id,"synthetic-"+id.substring(0,16),d.title(),d.perex(),d.category(),clock.instant(),clock.instant(),null,Status.DRAFT,path,List.of(r.id()),List.of(r.originalUrl()),mock.model(),null,null,null,Normalize.hash(d.markdown()),true,false,List.of(),d.claims(),"COMPLETE",0,RunScope.date(clock));
+            a=a.state(Status.REVIEWED,clock.instant(),"AI editor: "+mock.editorModel(),Editorial.approvalHash(a,d.markdown()),null,path);store.createArticle(a);parents.add(a);
+            store.operational("story|"+id,Json.write(new StoryOrder(id,new StoryPitch(r.id(),List.of(r.id()),"Čo uvádza syntetické hodnotenie?","ANALYSIS",90,"SDK fixture"),null,clock.instant(),clock.instant().plusSeconds(86400),List.of())));
+        }
+        var ai=new EditionDeskTest.MergeAi(parents.get(0),parents.get(1));var scope=RunScope.adHoc();
+        var result=new Newsroom(store,ai,config,clock,ResearchLookup.archiveOnly(),(s,g,d)->new Newsroom.Discovery.Result(0,0,List.of()),PublicationCheck.offline()).run(false,scope,false);
+        assertEquals(1,result.published(),result.toString());String id=EditionDesk.mergeId(parents.stream().map(Article::id).toList());var reopened=new AzureStore(config);
+        assertEquals(Status.PUBLISHED,reopened.article(id).value().status());assertNotNull(new PublicApi(reopened).detail(reopened.article(id).value().slug()));
+        for(var parent:parents){assertEquals(Status.REVIEWED,reopened.article(parent.id()).value().status());assertNotNull(reopened.operational("edition-route|"+parent.id()));}
+        assertNotNull(reopened.operational("merge|"+id));assertEquals(1,reopened.budget(scope.label()).articleIds().size());assertEquals(6,reopened.budget(scope.label()).calls());
+    }
     @Test void sdkPublishesPrivateReserveOnlyAfterCurrentChecksAndWritesNewsroomSummary(){
         var config=Config.from(Map.of("APP_STORAGE_CONNECTION_STRING","UseDevelopmentStorage=true","AUTO_PUBLISH_ENABLED","true","RESEARCH_FLOW_ENABLED","true","NEWSROOM_FLOW_ENABLED","true","MAX_AI_CALLS_PER_DAY","2"));
         var store=new AzureStore(config);store.initialize(List.of());var clock=Clock.offset(Fixtures.CLOCK,Duration.ofDays(4));var scope=RunScope.adHoc();

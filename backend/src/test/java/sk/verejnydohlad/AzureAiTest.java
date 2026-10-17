@@ -13,6 +13,17 @@ import sk.verejnydohlad.Models.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class AzureAiTest {
+    @Test void semanticEditionSelectionUsesStrongEditorAndMergedWritingUsesWriterWithOriginalReferences(){
+        var http=new OfflineHttp();var ai=new AzureAi(config(),http);var source=Fixtures.release("edition-adapter");var draft=new MockAi().generate(List.of(source));
+        var item=new EditionItem("candidate",draft.title(),draft.perex(),draft.category(),draft.markdown(),List.of(source.id()));
+        var plan=new EditionPlan(List.of());http.payload=response(Json.write(plan),"stop",null);assertEquals(plan,ai.edition(List.of(item),List.of()));
+        var selection=Json.tree(http.requestBody());assertEquals("chief-editor",selection.path("model").asText());assertEquals("edition",selection.path("response_format").path("json_schema").path("name").asText());
+        var input=Json.tree(selection.path("messages").get(1).path("content").asText());assertEquals(draft.markdown(),input.path("pending").get(0).path("markdown").asText());
+        var fields=draft.claims().stream().map(c->new ResearchedClaim(c.text(),List.of(new EvidenceRef(c.sourceId(),"body-0")))).toList();
+        http.payload=response(Json.write(new ResearchedGeneration(fields.get(0),fields.get(1),draft.category(),fields.subList(2,fields.size()))),"stop",null);
+        assertEquals(draft,ai.merge(List.of(draft,draft),List.of(source),List.of("Zachovať podporené pohľady.")));
+        var writing=Json.tree(http.requestBody());assertEquals("writer-mini",writing.path("model").asText());assertEquals("researched-draft",writing.path("response_format").path("json_schema").path("name").asText());
+    }
     @Test void planningAndRevisionTriageUseStrongModelAndCommissionedWritingUsesWriter() {
         var http=new OfflineHttp();var ai=new AzureAi(config(),http);var r=Fixtures.release("commission-contract");var d=new MockAi().generate(List.of(r));
         var p=new StoryPitch(r.id(),List.of(r.id()),"Čo znamená dokument pre verejnosť?","EXPLAINER",80,"Relevant synthetic question");

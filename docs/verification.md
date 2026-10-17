@@ -1,5 +1,11 @@
 # Verification record
 
+## Edition overlap and merged writing — 17 October 2026
+
+139 offline tests and 11 Azure SDK/Azurite integration tests passed. New scenarios cover two differently titled institution-specific budget drafts becoming one verified publication, preservation of unrelated stories and institutional perspectives, same-day published history across manual/scheduled scopes, valid new developments, invalid decision IDs/group overlap, no publication fallback after merge failure, no merge/revision chains, proposal reuse, interrupted routing recovery, concept-budget exhaustion and independent ad hoc recovery. A full edition with unused reserve articles buys no further selection. Adapter tests verify the stronger edition model, full candidate text inputs, writer-model synthesis and exact original excerpt references.
+
+The additional SDK scenario persists two private approved articles, the immutable synthesis audit, both parent routes and a single merged successor. A new AzureStore instance reads the merged publication and its public detail; the job uses one concept and six AI attempts (selection, writing, verification, private approval and the two current-source publication checks). All content and AI decisions in these tests are marked synthetic; no paid model run or retrospective modification of the two real 17 October articles is part of this verification. Semantic grouping quality on future real editions still depends on the model decision. Limits stay 6 concepts / 3 publications / 40 calls.
+
 ## Citation preflight and stronger correction — 15 October 2026
 
 122 offline tests and 10 Azure SDK/Azurite integration tests passed; Maven verification and Function packaging completed. New regressions cover exact decimal equality without rounding, late evidence selection within the same cited original, refusal to borrow from an uncited document, cached successful and unsuccessful correction proposals, preservation of institutional perspectives, sensitive-story exclusion, and an entire newsroom publication with a single repaired concept followed by both verification and editor stages. The correction adapter uses the stronger deployment and the multi-citation schema.

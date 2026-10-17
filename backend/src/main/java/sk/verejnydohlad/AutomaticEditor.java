@@ -22,7 +22,7 @@ public final class AutomaticEditor {
     Result run(Store.Guard guard,Instant deadline,List<String> errors,boolean publish) {
         int published=0,rejected=0;
         var candidates=store.editorial().stream().filter(a -> a.phase().equals("COMPLETE") &&
-            (a.status()==Status.DRAFT || publish && a.status()==Status.REVIEWED && isAutomatic(a)))
+            (a.status()==Status.DRAFT || publish && a.status()==Status.REVIEWED && isAutomatic(a)) && !EditionDesk.routed(store,a.id()))
             .sorted(Comparator.comparing(Article::createdAt).thenComparing(Article::id)).toList();
         for(var candidate:candidates) {
             if(Instant.now().isAfter(deadline)) break;
