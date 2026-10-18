@@ -32,6 +32,8 @@ All writing, research, correction and verification roles must preserve the actua
 
 `Sources.ops/story|ID` stores the immutable commission and expiry. `feedback|ID` records `REVISE`, `HOLD` or `DROP`; `reserve-hold|ID` records a publication deferral. At most two rejected topics per run are triaged. `REVISE` allows one separately identified successor with concrete instructions, fresh verification and fresh editor approval, preserving original institutional perspectives. The original rejection is never overwritten and a successor cannot start another revision chain. Sensitive drafts and known legacy correction successors are excluded. `HOLD` and `DROP` do not spend repeated rewrite calls; a genuinely new document may later support a new commission.
 
+These unprefixed operational keys describe the original daily process. After a successful manual reedition, same-day automatic work is isolated under `revision|UUID|` and uses that revision's budget, as described below. A manual replacement never adopts the old reserve. Revision-private work stays assigned to its target date; it is not automatically carried to another date. Before a date has an active replacement, the original daily reserve workflow applies.
+
 Inspect `newsroom-run|...` records for `mode`, `ready`, `held`, `publicationShortfall`, `calls`, `concepts`, `blockers` and `discoveryGaps`, alongside the normal scope-tagged `run|...` summary. Repeating an already full edition reports no shortfall; no new concept attempt is charged simply to publish a ready article. A shortfall never permits skipping checks. `editorial.ps1 newsroom` is read-only; `editorial.ps1 prepare` performs scheduled-budget preparation without publishing. Set `NEWSROOM_FLOW_ENABLED=false` to use the legacy feed-driven workflow while retaining private newsroom state.
 
 ## Automatic AI editor (production)
@@ -178,6 +180,9 @@ stateDiagram-v2
     DRAFT --> REVIEWED: grounded + named human approval
     REVIEWED --> DRAFT: edit invalidates approval
     REVIEWED --> PUBLISHED: immutable bytes + atomic public indexes
+    PUBLISHED --> SUPERSEDED: successful replacement edition
+    DRAFT --> CANCELLED: successful replacement retires old preparation
+    REVIEWED --> CANCELLED: successful replacement retires old reserve
     DRAFT --> REJECTED: human rejection
     REVIEWED --> REJECTED: human rejection
 ```
