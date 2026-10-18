@@ -15,7 +15,10 @@ class ReeditionTest {
     }
     @Test void revisionIdentityStillDistinguishesPrimaryDocumentFromResearchContext(){
         var s=new MemoryStore();var primary=Fixtures.release("revision-primary");var context=Fixtures.release("revision-context");s.collect(primary);s.collect(context);
-        var ai=new NewsroomTest.DeskAi(){public List<StoryPitch> commission(List<Release>d,List<Article>h){return List.of(new StoryPitch(primary.id(),List.of(primary.id()),"Čo uvádza hlavný dokument?","NEWS",90,"Primary only"));}};
+        var ai=new NewsroomTest.DeskAi(){
+            public List<StoryPitch> commission(List<Release>d,List<Article>h){return List.of(new StoryPitch(primary.id(),List.of(primary.id()),"Čo uvádza hlavný dokument?","NEWS",90,"Primary only"));}
+            public ResearchBrief research(Draft d,List<Release>r,List<String>g){return new ResearchBrief(false,false,"Syntetický kontext",r.stream().map(s->new GenerationClaim(s.body(),s.id(),"body-0")).toList(),List.of(),List.of());}
+        };
         ResearchLookup lookup=(p,d,seeds,st,g,end)->new ResearchLookup.Result(List.of(primary,context),List.of());
         var scope=RunScope.adHoc();new Reedition(s,ai,NewsroomTest.config("MAX_PUBLISHED_ARTICLES_PER_DAY","1"),Fixtures.CLOCK,lookup,(st,g,end)->new Newsroom.Discovery.Result(0,0,List.of()),PublicationCheck.offline()).run(false,scope,false);
         var article=s.article(s.activeRevision("2026-10-12").articleIds().getFirst()).value();assertEquals(2,article.sourceIds().size());assertEquals(List.of(primary.id()),SourceInputs.seeds(article));

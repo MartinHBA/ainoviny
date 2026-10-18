@@ -76,6 +76,9 @@ public final class AzureAi implements Ai {
             Retain findings only when they directly answer this concept's concrete question. A general
             budget assessment does not evaluate a particular nuclear project or hospital unless the
             original explicitly establishes that connection. Put unrelated leads outside findings.
+            Documents not supporting an accepted finding will be excluded from the writer's source
+            pack, so retain every material relevant assessment or caveat, but never pad findings to
+            keep an unrelated institution. Six retrieved documents is a ceiling, not a coverage target.
             Set viable=true only for a coherent useful comparison supported by findings from two distinct
             institutionGroup values. MF, IFP and UHP count as one group. Otherwise viable=false, retaining
             useful attributed single-source findings. Sensitive allegations must set sensitive=true.

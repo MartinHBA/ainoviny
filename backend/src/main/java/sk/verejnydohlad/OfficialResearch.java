@@ -29,7 +29,7 @@ final class OfficialResearch implements ResearchLookup {
         var robots=new Robots(http);
         Fetch fetch=testFetch!=null?testFetch:(url,hosts) -> {robots.requireAllowed(url,hosts);return http.get(url,hosts);};
         var gaps=new ArrayList<String>();var found=new LinkedHashMap<String,Release>();seeds.forEach(s -> found.put(s.id(),s));
-        var archive=Research.related(seeds,store.recent(Instant.now().minus(Duration.ofDays(90)),100));
+        var archive=Research.targeted(concept,seeds,plan.queries(),store.recent(Instant.now().minus(Duration.ofDays(90)),100));
         String terms=String.join(" ",plan.queries());
         for(String id:plan.sourceIds()) {
             var site=ResearchRegistry.site(id);
@@ -82,7 +82,7 @@ final class OfficialResearch implements ResearchLookup {
                 if(found.size()==before)gaps.add(site.name()+": v obmedzenom vyhľadávaní sa nenašiel použiteľný súvisiaci dokument.");
             } catch(Exception e) {gaps.add(site.name()+": vyhľadávanie nedostupné alebo vyčerpaný limit prístupu.");}
         }
-        // Fill unused space with related cached context, after giving targeted independent sources a chance.
+        // Supplement only with topic-matched archive leads; six documents is a ceiling, not a quota.
         for(var r:archive)if(found.size()<6 && found.values().stream().noneMatch(s -> s.contentHash().equals(r.contentHash())))found.putIfAbsent(r.id(),r);
         for(var r:found.values())if(r.publishedAt().equals(Instant.EPOCH))gaps.add(r.organization()+": dátum publikovania dokumentu nie je overený ("+r.id().substring(0,12)+").");
         gaps.add("Rešerš bola obmedzená na vybrané oficiálne zdroje a dostupné dokumenty; nejde o úplné pokrytie témy.");

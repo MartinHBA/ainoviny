@@ -58,6 +58,10 @@ Roly sú oddelené volania modelov, nie otvorené autonómne slučky. HTTP dohľ
 
 Rešeršný register má **30 oficiálnych zdrojov** podľa [katalógu schválených webov](docs/approved-research-websites.md). Presné hosty, inštitucionálne skupiny a stav konektora sú v [research-sites.json](backend/src/main/resources/research-sites.json). Noviny a súkromné médiá v registri nie sú. Zaradenie webu neznamená, že všetky jeho dokumenty boli načítané.
 
+**Verejný zoznam zdrojov vychádza z citácií výsledného textu.** Zobrazuje iba dokumenty, na ktoré odkazuje titulok, perex alebo niektorý odsek, bez duplicít. Dokument iba nájdený pri rešerši sa automaticky nestáva zdrojom článku. Toto pravidlo platí aj pre už publikované články bez prepisovania ich textov či schválení. Chýbajúca alebo nejednoznačná väzba citácie na uložený odkaz sa neobchádza zobrazením celého balíka rešerše.
+
+Archív dopĺňa rešerš iba podkladmi so zhodou konkrétnej témy v titulku alebo obsahu; všeobecné slová o vláde, financiách či inštitúciách nestačia a šesť dokumentov je strop, nie povinný počet. Ide o predvýber stôp, nie dôkaz relevantnosti. Silnejší asistent ich posúdi a redaktor dostane iba pôvodné zadanie a dokumenty podporujúce prijaté zistenia. Všetky načítané dokumenty ostávajú v súkromnom rešeršnom audite, vrátane vyradených.
+
 Podporované sú tri vyhľadávacie RSS konektory, oficiálne feedy a obmedzené HTML dohľadávanie. STATdata, Slov-Lex, CRZ, RPVS, RÚZ, ORSR, hlavný štatistický portál a Enviroportál sú označené `UNSUPPORTED`: potrebujú vlastné dátové alebo aplikačné konektory. Asistent takýto výber uvedie ako obmedzenie; nepredstiera, že register preveril. Ani HTML konektor nezaručuje prístup ku všetkým podstránkam či historickému archívu.
 
 Na koncept je najviac **šesť dokumentov**, **65 sekúnd dohľadávania** a **16 HTTP požiadaviek vrátane robots.txt**. Z jedného zdroja vyberá najviac dva výsledky a z jednej stránky najviac jednu PDF prílohu. Dopĺňa aj súvisiace podklady z najviac 100 uložených záznamov za predchádzajúcich 90 dní. Ide o ohraničenú rešerš dostupných relevantných dokumentov, nie garantované zhodnotenie všetkého, čo k téme existuje.

@@ -251,7 +251,7 @@ public final class Pipeline {
             "Analytical brief needs evidence from different institutions","Analytical draft omitted its second source","AI refusal or incomplete response",
             "Invalid JSON for ResearchBrief","Research needs 2-6 documents from different institutions","Unknown source evidence identifier",
             "Incomplete article generation","Invalid AI draft structure","Invalid claim map","Invalid research plan","Unknown research site",
-            "Researched draft omitted a relevant institution","Editorial revision omitted an original perspective",
+            "Researched draft omitted a relevant institution","Editorial revision omitted an original perspective","Draft cited unaccepted research source","Missing accepted research source",
             "Claim map too large","Correction source input budget exceeded","Research input budget exceeded","Invalid researched claim","Invalid researched citation",
             "Invalid chief editor decision","Contradictory chief editor approval","Invalid chief editor reason","Invalid commissions",
             "Current original cannot be extracted","Current original text outside bounds","Current original absent from official feed","Freshness budget reached",

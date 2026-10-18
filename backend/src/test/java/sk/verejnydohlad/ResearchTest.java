@@ -7,6 +7,18 @@ import sk.verejnydohlad.Models.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ResearchTest {
+    @Test void archiveSupplementRequiresConcreteTopicInsteadOfGenericGovernmentFinanceBoilerplate(){
+        var seed=document("mochovce-focus","mh-sr","Štvrtý blok Mochoviec dodal elektrinu do siete","Ministerstvo hospodárstva informovalo o verejných financiách a rozhodnutiach na Slovensku. Štvrtý blok Mochoviec sa pripojil do siete.");
+        var budget=document("unrelated-budget","rrz-sk","RRZ hodnotí rozpočet verejnej správy","Ministerstvo hospodárstva informovalo o verejných financiách a rozhodnutiach na Slovensku. Rozpočet a verejný dlh sú predmetom hodnotenia.");
+        var training=document("unrelated-training","nku-sr","Rekvalifikačné kurzy a ich prínos","Ministerstvo informovalo o rozhodnutiach, financovaní a verejných údajoch na Slovensku.");
+        var reactor=document("reactor-regulator","ujd-sr","Bezpečnosť jadrových zariadení","Podklad opisuje štvrtý blok elektrárne Mochovce a podmienky jeho pripojenia do siete.");
+        var concept=new Draft(seed.title(),"Podľa ministerstva ide o míľnik.","Slovensko","",List.of());
+        assertEquals(List.of(seed,reactor),Research.targeted(concept,List.of(seed),List.of("Mochovce elektrina"),List.of(budget,training,reactor)));
+        assertEquals(List.of(seed),Research.targeted(concept,List.of(seed),List.of("Mochovce elektrina"),List.of(budget,training)));
+        var fiscal=document("budget-focus","mf-sr","Návrh štátneho rozpočtu","Predkladateľ uvádza návrh rozpočtu.");
+        var debt=document("fiscal-assessment","rrz-sk","Deficit zostáva vysoký a dlh rastie","RRZ hodnotí predložený rozpočet a jeho deficit.");
+        assertEquals(List.of(fiscal,debt),Research.targeted(new Draft(fiscal.title(),"","Slovensko","",List.of()),List.of(fiscal),List.of("rozpočet"),List.of(debt)));
+    }
     static Release document(String seed,String institution,String title,String body) {
         var r=Fixtures.release(seed);
         return new Release(r.id(),institution,institution,r.originalUrl(),r.publishedAt(),r.collectedAt(),title,body,Normalize.hash(body),r.blobPath());

@@ -1,5 +1,9 @@
 # Verification record
 
+## Cited public sources and focused research — 18 October 2026
+
+159 offline tests and 13 Azure SDK/Azurite integration tests passed. New cases cover an existing published article with unused RRZ/NKÚ material returning only its actual cited original, retention/deduplication of all real paragraph citations in stable source order, failure on missing/conflicting/unmapped citation metadata, topic-matched archive supplementation excluding generic budget/training material from an energy topic while retaining regulator context and a budget-specific RRZ assessment, and filtering writer inputs to seeds/accepted findings while preserving unused originals in the private retrieval snapshot. Existing primary-input recovery, revision activation and publication-freshness scenarios remain covered. No extra model call was added to filtering.
+
 ## Atomic daily reedition — 18 October 2026
 
 154 offline tests and 13 Azure SDK/Azurite integration tests passed. Replacement scenarios cover fresh work on previously used same-day documents; new revision-bound IDs, paths, approvals and scoped budgets; preservation of the old public edition throughout generation/review; one approved article being sufficient; zero approvals retaining old preparation; cancellation of carried-over legacy reserve; preservation of older days; failed activation/retry with no duplicate work; delayed retry requiring new current checks and using actual swap time; superseded/stale UUID rejection; local date boundaries; and automatic timers sharing the active revision's publication quota. Legacy Article JSON remains readable with only the additive revision field defaulted; old approval hashes remain unchanged. Primary-input recovery still distinguishes revision research context from the topic document.

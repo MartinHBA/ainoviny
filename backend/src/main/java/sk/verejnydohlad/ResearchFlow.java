@@ -7,7 +7,7 @@ import sk.verejnydohlad.Models.*;
 
 /** One initial concept, one bounded research pass, one rewrite. Every completed step is immutable. */
 final class ResearchFlow {
-    static final String POLICY="writer-assistant-v1";
+    static final String POLICY="writer-assistant-v2-relevant-sources";
     interface Paid {<T> T call(Supplier<T> action);}
     record Snapshot(String inputHash,String policy,List<Release> documents,List<String> gaps) {}
     record Outcome(Draft draft,List<Release> sources,ResearchBrief brief) {}
@@ -51,15 +51,19 @@ final class ResearchFlow {
             brief=audit.brief();Research.validate(brief,sources);
         }
         ResearchBrief accepted=brief;
+        // The analyst reads all retrieval leads, but only the commissioned sources and originals
+        // supporting accepted findings reach the writer. The full retrieval stays in the private audit.
+        var writingSources=Research.writingSources(seeds,sources,brief);
         String rewritten=store.optionalBlob("articles",root+"rewritten.json");
-        Draft draft=rewritten==null?paid.call(() -> ai.rewrite(initial,sources,accepted)):Json.read(rewritten,Draft.class);
-        Validation.draft(draft);Research.coverage(draft,brief,sources);
-        var institutions=sources.stream().collect(java.util.stream.Collectors.toMap(Release::id,s -> ResearchRegistry.group(s.sourceId())));
+        Draft draft=rewritten==null?paid.call(() -> ai.rewrite(initial,writingSources,accepted)):Json.read(rewritten,Draft.class);
+        Validation.draft(draft);Research.coverage(draft,brief,writingSources);
+        var institutions=writingSources.stream().collect(java.util.stream.Collectors.toMap(Release::id,s -> ResearchRegistry.group(s.sourceId())));
+        if(draft.claims().stream().anyMatch(c->!institutions.containsKey(c.sourceId())))throw new IllegalArgumentException("Draft cited unaccepted research source");
         var covered=draft.claims().stream().map(c -> institutions.get(c.sourceId())).filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet());
         if(brief.findings().stream().map(f -> institutions.get(f.sourceId())).anyMatch(group -> !covered.contains(group)))
             throw new IllegalArgumentException("Researched draft omitted a relevant institution");
         save(store,guard,root+"rewritten.json",draft);
-        return new Outcome(draft,sources,brief);
+        return new Outcome(draft,writingSources,brief);
     }
     private static void validate(Snapshot s,String hash,List<Release> seeds) {
         if(!hash.equals(s.inputHash()) || !POLICY.equals(s.policy()) || s.documents()==null || s.documents().isEmpty() || s.documents().size()>6 ||

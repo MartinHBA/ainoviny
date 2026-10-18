@@ -7,6 +7,20 @@ import sk.verejnydohlad.Models.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ResearchFlowTest {
+    @Test void writerReceivesOnlySeedsAndAcceptedFindingsWhileFullRetrievalRemainsAudited(){
+        var s=new MemoryStore();var primary=source("focused-primary","mh-sr");var unused=source("unused-budget","rrz-sk");s.collect(primary);s.collect(unused);
+        var ai=new NewsroomTest.DeskAi(){
+            public ResearchBrief research(Draft d,List<Release>r,List<String>g){assertEquals(2,r.size());return new ResearchBrief(false,false,"Čo uvádza primárny podklad?",List.of(new GenerationClaim(primary.body(),primary.id(),"body-0")),List.of("Syntetický rozsah"),List.of());}
+            public Draft rewrite(Draft d,List<Release>r,ResearchBrief b){assertEquals(List.of(primary),r);return d;}
+            public Verification verify(Draft d,List<Release>r){assertEquals(List.of(primary),r);return super.verify(d,r);}
+            public List<StoryPitch> commission(List<Release>r,List<Article>h){return List.of(new StoryPitch(primary.id(),List.of(primary.id()),"Čo uvádza primárny podklad?","NEWS",90,"Synthetic topic"));}
+        };
+        ResearchLookup lookup=(p,d,seeds,st,g,end)->new ResearchLookup.Result(List.of(primary,unused),List.of("Syntetická rešerš"));
+        var result=new Newsroom(s,ai,NewsroomTest.config("MAX_PUBLISHED_ARTICLES_PER_DAY","1"),Fixtures.CLOCK,lookup,(st,g,end)->new Newsroom.Discovery.Result(0,0,List.of()),PublicationCheck.offline()).run(false,RunScope.scheduled(),false);
+        assertEquals(1,result.published(),result.toString());var a=s.editorial().getFirst();assertEquals(List.of(primary.id()),a.sourceIds());
+        var snapshot=s.blobs.entrySet().stream().filter(e->e.getKey().endsWith("/retrieval.json")).findFirst().orElseThrow().getValue();
+        assertTrue(snapshot.contains(unused.id()));assertEquals(List.of(primary.originalUrl()),new PublicApi(s).detail(a.slug()).originalSources());
+    }
     static Config config(String... overrides) {
         var env=new HashMap<String,String>();env.put("APP_STORAGE_CONNECTION_STRING","UseDevelopmentStorage=true");env.put("AUTO_PUBLISH_ENABLED","true");env.put("RESEARCH_FLOW_ENABLED","true");
         for(int i=0;i<overrides.length;i+=2)env.put(overrides[i],overrides[i+1]);return Config.from(env);
