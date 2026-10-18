@@ -19,10 +19,16 @@ class AzureAiTest {
         var plan=new EditionPlan(List.of());http.payload=response(Json.write(plan),"stop",null);assertEquals(plan,ai.edition(List.of(item),List.of()));
         var selection=Json.tree(http.requestBody());assertEquals("chief-editor",selection.path("model").asText());assertEquals("edition",selection.path("response_format").path("json_schema").path("name").asText());
         var input=Json.tree(selection.path("messages").get(1).path("content").asText());assertEquals(draft.markdown(),input.path("pending").get(0).path("markdown").asText());
+        http.payload=response(Json.write(plan),"stop",null);assertEquals(plan,ai.reviewEdition(plan,List.of(item),List.of()));
+        var routingReview=Json.tree(http.requestBody());assertEquals("chief-editor",routingReview.path("model").asText());
+        var routingInput=Json.tree(routingReview.path("messages").get(1).path("content").asText());
+        assertEquals(Json.tree(Json.write(plan)),routingInput.path("proposed"));assertEquals(draft.markdown(),routingInput.path("pending").get(0).path("markdown").asText());
+        assertTrue(routingReview.path("messages").get(0).path("content").asText().contains("Independently audit"));
         var fields=draft.claims().stream().map(c->new ResearchedClaim(c.text(),List.of(new EvidenceRef(c.sourceId(),"body-0")))).toList();
         http.payload=response(Json.write(new ResearchedGeneration(fields.get(0),fields.get(1),draft.category(),fields.subList(2,fields.size()))),"stop",null);
         assertEquals(draft,ai.merge(List.of(draft,draft),List.of(source),List.of("Zachovať podporené pohľady.")));
         var writing=Json.tree(http.requestBody());assertEquals("writer-mini",writing.path("model").asText());assertEquals("researched-draft",writing.path("response_format").path("json_schema").path("name").asText());
+        assertTrue(writing.path("messages").get(0).path("content").asText().contains("announced or approved future"));
     }
     @Test void planningAndRevisionTriageUseStrongModelAndCommissionedWritingUsesWriter() {
         var http=new OfflineHttp();var ai=new AzureAi(config(),http);var r=Fixtures.release("commission-contract");var d=new MockAi().generate(List.of(r));
@@ -67,6 +73,7 @@ class AzureAiTest {
         assertEquals("chief-editor",body.path("model").asText());assertEquals("editor",body.path("response_format").path("json_schema").path("name").asText());
         assertTrue(body.path("response_format").path("json_schema").path("strict").asBoolean());
         assertEquals(2,body.path("messages").size());assertTrue(body.path("messages").get(0).path("content").asText().contains("final chief editor"));
+        assertTrue(body.path("messages").get(0).path("content").asText().contains("completion status in the title, perex and EVERY paragraph"));
         assertEquals("https://test.openai.azure.com/openai/v1/chat/completions",http.request.uri().toString());
         assertTrue(body.path("max_tokens").asInt()<=1600);
         http.payload=response(Json.write(new Verification(true,false,List.of())),"stop",null);assertTrue(ai.verify(d,List.of(r)).passed());

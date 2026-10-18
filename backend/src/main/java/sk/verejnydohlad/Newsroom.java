@@ -9,7 +9,7 @@ import sk.verejnydohlad.Models.*;
 /** A bounded editorial desk: discovery, commissions, private reserve and morning publication. */
 final class Newsroom {
     static final String POLICY="newsroom-v1", REVISION="editorial-revision-v1";
-    static final String PUBLICATION_POLICY="cited-originals-v2";
+    static final String PUBLICATION_POLICY="complete-originals-v3-event-status";
     private static final Logger LOG=Logger.getLogger(Newsroom.class.getName());
     interface Discovery {
         record Result(int documents,int checked,List<String> gaps){}

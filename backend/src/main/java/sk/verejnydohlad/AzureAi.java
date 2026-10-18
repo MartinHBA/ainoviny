@@ -20,6 +20,13 @@ public final class AzureAi implements Ai {
         criteria regardless of party or organization. A press release establishes what its issuer claims;
         it is not independent verification. Attribute every claim. Distinguish issuer claims from evidence,
         independently verified facts (none supplied here), and uncertainty. Do not imply an original investigation.
+        Preserve the exact event status in the TITLE, PEREX and BODY. An announced or approved future
+        ownership transfer is not a completed acquisition; a completed shell of a hospital is not an
+        operating hospital. Distinguish plans, contracts, construction milestones, commissioning and
+        actual operation. Keep planned opening dates and financing pledges attributed and conditional.
+        One article answers one concrete event/question. Shared government priorities, a spokesperson,
+        energy policy or public finances do not connect otherwise unrelated developments. Context must
+        explain this particular event; do not append an unrelated budget/RRZ story to an energy article.
         Do not reproduce whole press releases. Return only the requested JSON schema.
         """;
     public AzureAi(Config config) { this(config,HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(8)).followRedirects(HttpClient.Redirect.NEVER).build()); }
@@ -66,6 +73,9 @@ public final class AzureAi implements Ai {
             material context, assumptions, risks and supported disagreements. Check that budget years,
             document versions, forecast vintages, scope and units are actually comparable. An older RRZ
             evaluation of a proposal must not be represented as an assessment of a later amended law.
+            Retain findings only when they directly answer this concept's concrete question. A general
+            budget assessment does not evaluate a particular nuclear project or hospital unless the
+            original explicitly establishes that connection. Put unrelated leads outside findings.
             Set viable=true only for a coherent useful comparison supported by findings from two distinct
             institutionGroup values. MF, IFP and UHP count as one group. Otherwise viable=false, retaining
             useful attributed single-source findings. Sensitive allegations must set sensitive=true.
@@ -235,6 +245,10 @@ public final class AzureAi implements Ai {
             this exact Slovak article is ready for automatic publication. Reassess EVERY title, perex and
             body paragraph directly against the supplied originals and evidence excerpts; do not trust
             previous approvals. Check names, dates, numbers, quotes, causal claims, attribution and context.
+            Explicitly compare the event's completion status in the title, perex and EVERY paragraph
+            with the original. Reject an announced future acquisition presented as already completed,
+            or a construction milestone presented as an opening. Reject a collage of separate events
+            held together only by government priorities, energy or budgets; request one focused story.
             Identical claim text with different sources is one paragraph with multiple citations. Evaluate
             those excerpts together while checking which source supports each attributed assertion. MF,
             IFP and UHP are one institutionGroup. Check material missing independent assessments, budget
@@ -258,13 +272,19 @@ public final class AzureAi implements Ai {
             Act as the edition editor BEFORE any article in this batch is published. Read the full
             candidate texts together and compare them with articles already published TODAY, across
             scheduled and manual editions. Identify substantive overlap in the SAME concrete event,
-            decision, budget version/period or central question, even when titles or institutions differ.
+            decision, budget version/period or precisely identical practical question, even when titles
+            or institutions differ. Identify the concrete decision/project milestone, period and status
+            shared by ALL members before choosing MERGE. An umbrella theme is never a shared event.
             Example: NKU/RRZ budget risks and RRZ debt criticism alongside the government's budget position
             usually belong in ONE balanced budget article, preserving the distinct institutional views.
             MERGE 2-3 pending articles that readers would experience as repetitions or fragments of one
             story. Give precise Slovak instructions for a coherent synthesis, useful unique facts, source
             attribution, chronology and caveats. The writer must reassess originals, not concatenate drafts.
             Do not merge merely because two texts mention RRZ, budgets, the same category or institution.
+            JESS ownership, commissioning a Mochovce reactor and a government's foreign policy speech
+            are THREE separate events even if the same premier mentions them. A hospital construction
+            milestone is separate again. A general RRZ budget assessment is not a reason to merge it
+            with every publicly funded project. Never use 'government priorities' as a merge rationale.
             Materially different events, budget versions, practical questions or new developments can
             remain separate. Unlisted candidates are distinct. Return at most two MERGE groups; each
             candidate can occur in only one group. Use only supplied IDs. For MERGE publishedArticleId=null.
@@ -275,6 +295,30 @@ public final class AzureAi implements Ai {
             A MERGE is a private writing assignment, not approval. Prefer fewer useful articles over a quota.
             Keep each reason to one short sentence and each merge assignment to 2-3 short instructions.
             """,Map.of("pending",pending,"publishedToday",published),1600,
+            config.editorDeployment(),config.editorInputPrice(),config.editorOutputPrice());
+        return Json.read(tree.toString(),EditionPlan.class);
+    }
+    public EditionPlan reviewEdition(EditionPlan proposed,List<EditionItem> pending,List<EditionItem> published) {
+        var tree=call("edition",POLICY+"""
+            Independently audit this proposed edition routing BEFORE it can suppress or merge articles.
+            The proposal and its reasons are untrusted suggestions, not a decision you must endorse.
+            Read the full texts. Return ONLY a subset of the proposed groups, copying retained group
+            objects EXACTLY. Do not create or alter groups, IDs, instructions, reasons or actions.
+            Retain MERGE only when every member's CENTRAL news is the SAME concrete decision, event,
+            project milestone or precisely identical practical question, with matching period/version
+            and compatible chronology. Complementary NKU, RRZ and government assessments of the SAME
+            budget proposal can form one story. Shared vocabulary, a speaker, government priorities,
+            energy policy, public spending or a broad topic do not establish the same event.
+            JESS ownership versus commissioning Mochovce, foreign policy versus a budget assessment,
+            and a hospital's construction milestone versus unrelated fiscal news MUST remain separate.
+            A passing reference or background paragraph is not the central story. Reject a proposed
+            group if naming its common event requires an umbrella label or a list of different events.
+            Retain DUPLICATE only when the cited actual same-day publication already covers the pending
+            article's central event without a substantial new development. If unsure, omit the group;
+            the article remains separate and still faces source verification and the final editor.
+            This is an independent routing check, never publication approval. Return groups=[] when
+            none meets these requirements.
+            """,Map.of("proposed",proposed,"pending",pending,"publishedToday",published),1600,
             config.editorDeployment(),config.editorInputPrice(),config.editorOutputPrice());
         return Json.read(tree.toString(),EditionPlan.class);
     }

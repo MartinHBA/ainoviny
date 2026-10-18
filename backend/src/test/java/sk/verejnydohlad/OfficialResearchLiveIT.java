@@ -10,6 +10,21 @@ import static org.junit.jupiter.api.Assertions.*;
 /** Explicit public-network check, no Azure credentials, AI calls or production Storage writes. */
 @EnabledIfSystemProperty(named="research.integration",matches="true")
 class OfficialResearchLiveIT {
+    @Test void publicationReadsFullUvJESSAndMartinOriginalsWithoutAIOrStorageWrites() {
+        var urls=List.of(
+            "https://www.vlada.gov.sk/tlacove-spravy/slovensko-sa-stane-100-vlastnikom-spolocnosti-jess-co-urychli-vystavbu-noveho-jadroveho-zdroja-v-jaslovskych-bohuniciach/",
+            "https://www.vlada.gov.sk/tlacove-spravy/r-fico-nova-nemocnica-v-martine-ma-hotovu-hrubu-stavbu-a-vlada-garantuje-pokracovanie-vystavby-aj-v-roku-2027/");
+        var originals=urls.stream().map(url->new Release(Normalize.hash(url),"uv-sr","Úrad vlády SR",url,Instant.EPOCH,Instant.EPOCH,"Live extraction check","","","read-only.json")).toList();
+        var store=new MemoryStore();
+        try(var guard=store.lock()) {
+            var current=PublicationCheck.official().refresh(originals,guard,Instant.now().plusSeconds(90));
+            assertTrue(current.get(0).body().length()>2500,"JESS original must include paragraphs after the lead");
+            assertTrue(current.get(1).body().length()>1500,"Martin original must include financing/opening paragraphs");
+            assertTrue(current.get(0).body().contains("JAVYS"));assertTrue(current.get(1).body().contains("2029"));
+            current.forEach(r->System.out.println("uv-live chars="+r.body().length()+" url="+r.originalUrl()));
+            assertTrue(store.releases.isEmpty());assertTrue(store.editorial().isEmpty());assertTrue(store.budgets.isEmpty());
+        }
+    }
     @Test void officialBudgetSearchRetrievesRRZAndIFPOriginalsThroughProductionSafetyRules() {
         var store=new MemoryStore();var seed=Fixtures.release("public-connectivity-only");store.collect(seed);
         try(var guard=store.lock()) {

@@ -94,6 +94,44 @@ class EditionDeskTest {
         var s=new MemoryStore();ready(s,"Rozpočet a nové hlasovanie parlamentu","mf-sr");ready(s,"Rozpočet domácnosti a praktické úverové pravidlá","nbs-sk");
         var ai=new NewsroomTest.DeskAi();assertEquals(2,NewsroomTest.desk(s,ai).run(false,RunScope.scheduled(),false).published());assertEquals(0,ai.corrections);
     }
+    @Test void independentReviewRejectsBroadGovernmentPriorityMergeAndKeepsAllThreeEventsSeparate(){
+        var s=new MemoryStore();var jess=ready(s,"JESS pripravované vlastníctvo","uv-sr");var foreign=ready(s,"Zahraničná politika vlády","uv-sr");var martin=ready(s,"Martin hrubá stavba nemocnice","uv-sr");
+        var ai=new MergeAi(jess,foreign){
+            public EditionPlan reviewEdition(EditionPlan p,List<EditionItem> pending,List<EditionItem> published){
+                assertEquals(3,pending.size());assertEquals(1,p.groups().size());return new EditionPlan(List.of());
+            }
+        };
+        assertEquals(3,NewsroomTest.desk(s,ai).run(false,RunScope.scheduled(),false).published());
+        assertEquals(0,ai.merges);assertFalse(EditionDesk.routed(s,jess.id()));assertFalse(EditionDesk.routed(s,foreign.id()));assertFalse(EditionDesk.routed(s,martin.id()));
+    }
+    @Test void legacyChainHoldsAreReassessedByNewPolicyWithoutReleasingMergeOrDuplicateParents(){
+        var s=new MemoryStore();var jess=ready(s,"JESS uložená syntéza","uv-sr");var foreign=ready(s,"Samostatná zahraničná politika","uv-sr");var parent=ready(s,"Pôvodný súkromný koncept","uv-sr");
+        String hold=Json.write(Map.of("action","HOLD","plan","old-plan","reason","Further consolidation requires a new editorial assignment"));
+        s.operational("edition-route|"+jess.id(),hold);s.operational("edition-route|"+foreign.id(),hold);
+        s.operational("merge|"+jess.id(),"{}");
+        String route=Json.write(Map.of("action","MERGE","articleId",jess.id()));s.operational("edition-route|"+parent.id(),route);
+        var ai=new MergeAi(jess,foreign){public EditionPlan reviewEdition(EditionPlan p,List<EditionItem>a,List<EditionItem>b){return new EditionPlan(List.of());}};
+        assertEquals(2,NewsroomTest.desk(s,ai).run(false,RunScope.scheduled(),false).published());
+        assertEquals(0,ai.merges);assertEquals(parent,s.article(parent.id()).value());assertEquals(route,s.operational("edition-route|"+parent.id()));
+        var reassessed=Json.tree(s.operational("edition-route|"+jess.id()));assertEquals("DISTINCT",reassessed.path("action").asText());
+        assertEquals("HOLD",reassessed.path("previous").path("action").asText());assertEquals(EditionDesk.SELECTION_POLICY,reassessed.path("policy").asText());
+    }
+    @Test void interruptedRoutingReviewReusesProposalButCannotRouteOrPublishBeforeReviewCompletes(){
+        var s=new MemoryStore();var a=ready(s,"Rozpočet nový návrh","mf-sr");var b=ready(s,"Rozpočet nezávislé hodnotenie","rrz-sk");int[] routingReviews={0};
+        var ai=new MergeAi(a,b){public EditionPlan reviewEdition(EditionPlan p,List<EditionItem>x,List<EditionItem>y){if(routingReviews[0]++==0)throw new IllegalStateException("Interrupted review");return p;}};
+        var desk=NewsroomTest.desk(s,ai);assertEquals(0,desk.run(false,RunScope.scheduled(),false).published());
+        assertFalse(EditionDesk.routed(s,a.id()));assertFalse(EditionDesk.routed(s,b.id()));assertEquals(0,ai.merges);
+        assertEquals(1,desk.run(false,RunScope.scheduled(),false).published());assertEquals(1,ai.editionCalls);assertEquals(2,routingReviews[0]);assertEquals(1,ai.merges);
+    }
+    @Test void exhaustionBetweenProposalAndReviewLeavesBatchPrivateAndReviewCannotInventOrModifyGroups(){
+        var s=new MemoryStore();var a=ready(s,"Rozpočet A","mf-sr");var b=ready(s,"Rozpočet B","rrz-sk");var ai=new MergeAi(a,b);
+        var config=NewsroomTest.config("MAX_AI_CALLS_PER_DAY","1");
+        assertEquals(0,NewsroomTest.desk(s,ai,config,Fixtures.CLOCK,PublicationCheck.offline()).run(false,RunScope.scheduled(),false).published());
+        assertEquals(1,s.budget("2026-10-12").calls());assertFalse(EditionDesk.routed(s,a.id()));assertEquals(0,ai.merges);
+        var group=new EditionGroup("MERGE",List.of(a.id(),b.id()),null,List.of("Pôvodné pokyny"),"Tá istá udalosť");
+        var changed=new EditionGroup("MERGE",group.articleIds(),null,List.of("Nové pokyny"),group.reason());
+        assertThrows(IllegalArgumentException.class,()->EditionDesk.validateReview(new EditionPlan(List.of(group)),new EditionPlan(List.of(changed))));
+    }
     @Test void fullEditionDoesNotSpendOnAnotherSelectionEvenWhenReserveArticlesRemain(){
         var s=NewsroomTest.sources(4);var ai=new NewsroomTest.DeskAi();NewsroomTest.desk(s,ai).run(false,RunScope.scheduled(),true);
         var next=Clock.offset(Fixtures.CLOCK,Duration.ofDays(1));var desk=NewsroomTest.desk(s,ai,NewsroomTest.config(),next,PublicationCheck.offline());

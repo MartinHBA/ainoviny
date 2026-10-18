@@ -135,9 +135,20 @@ final class OfficialResearch implements ResearchLookup {
         else if(store.knownRelease(id))found.putIfAbsent(id,store.release(id));
     }
     static String body(Document page,ResearchRegistry.Site site) {
-        var selected=page.select(site.selector()).first();if(selected==null)throw new IllegalArgumentException("No reliable research body selector");
-        selected=selected.clone();selected.select("nav,header,footer,script,style,noscript,form,.cookie-notice,.related-posts").remove();
-        return Normalize.text(selected.outerHtml());
+        return body(page,site.selector());
+    }
+    static String body(Document page,String selector) {
+        var selected=page.select(selector);if(selected.isEmpty())throw new IllegalArgumentException("No reliable research body selector");
+        // Selectors may describe several article paragraphs, or overlapping alternative containers.
+        // Keep every top-level match in document order, but never copy a nested match twice.
+        var roots=selected.stream().filter(e->e.parents().stream().noneMatch(selected::contains)).toList();
+        var html=new StringBuilder();
+        for(var root:roots) {
+            var content=root.clone();
+            content.select("nav,header,footer,script,style,noscript,form,.cookie-notice,.related-posts").remove();
+            html.append(content.outerHtml()).append('\n');
+        }
+        return Normalize.text(html.toString());
     }
     static boolean inScope(String url,ResearchRegistry.Site site) {
         String path=URI.create(url).getPath().toLowerCase(Locale.ROOT);

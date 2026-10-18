@@ -20,5 +20,6 @@ public interface Ai {
     default Draft write(StoryPitch pitch,List<Release> sources){return generate(sources);}
     default RevisionFeedback feedback(Draft draft,List<Release> sources,List<String> issues){throw new UnsupportedOperationException("No revision triage configured");}
     default EditionPlan edition(List<EditionItem> pending,List<EditionItem> published){throw new UnsupportedOperationException("No edition editor configured");}
+    default EditionPlan reviewEdition(EditionPlan proposed,List<EditionItem> pending,List<EditionItem> published){throw new UnsupportedOperationException("No edition overlap reviewer configured");}
     default Draft merge(List<Draft> drafts,List<Release> sources,List<String> instructions){throw new UnsupportedOperationException("No merging writer configured");}
 }

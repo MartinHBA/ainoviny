@@ -21,6 +21,7 @@ class NewsroomTest {
         final MockAi mock=new MockAi();int planning,writing,feedback,corrections,reviews,checks;boolean rejectFirst,failWriting,failCorrection,rejectCorrected,rejectFirstReview,sensitive;
         String disposition="REVISE";
         public EditionPlan edition(List<EditionItem> pending,List<EditionItem> published){return mock.edition(pending,published);}
+        public EditionPlan reviewEdition(EditionPlan proposed,List<EditionItem> pending,List<EditionItem> published){return proposed;}
         public String model(){return mock.model();}public String editorModel(){return mock.editorModel();}
         public Map<String,Analysis> analyze(List<Release> r){return mock.analyze(r);}
         public List<StoryPitch> commission(List<Release> docs,List<Article> history){planning++;var result=new ArrayList<StoryPitch>();int i=0;for(var r:docs.stream().limit(6).toList())result.add(new StoryPitch(r.id(),List.of(r.id()),"Čo tento dokument znamená pre verejnosť?",List.of("NEWS","ANALYSIS","EXPLAINER").get(i++%3),90,"Useful synthetic commission"));return result;}

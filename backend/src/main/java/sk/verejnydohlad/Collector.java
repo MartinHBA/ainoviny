@@ -28,9 +28,7 @@ public final class Collector {
                         if (!source.bodySelector().isBlank()) {
                             robots.requireAllowed(item.url(), source.allowedHosts()); Thread.sleep(1000);
                             var doc = Jsoup.parse(new String(http.get(item.url(), source.allowedHosts()), StandardCharsets.UTF_8), item.url());
-                            var content = doc.select(source.bodySelector());
-                            if (content.isEmpty()) throw new IllegalStateException("Configured body selector no longer matches");
-                            body = Normalize.text(content.outerHtml());
+                            body = OfficialResearch.body(doc,source.bodySelector());
                         }
                         if(body.length()<120 && source.bodySelector().isBlank()) {
                             var site=ResearchRegistry.site(source.sourceId());

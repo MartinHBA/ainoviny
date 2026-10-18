@@ -8,28 +8,55 @@ import sk.verejnydohlad.Models.*;
 /** Batch-level semantic selection. Routing never edits an original article or grants approval. */
 final class EditionDesk {
     static final String POLICY="edition-synthesis-v1";
+    static final String SELECTION_POLICY="edition-selection-v2-concrete-event";
     interface Paid {<T>T call(Supplier<T> action);}
     record Parent(String id,String hash,Draft draft) {}
     record MergeInput(List<Parent> parents,List<Release> sources,List<String> instructions,String writerModel,String editorModel,String policy,Instant expiresAt) {}
     record MergeRef(String inputPath,String inputHash,List<String> parentIds) {}
-    static boolean routed(Store store,String id){return store.operational("edition-route|"+id)!=null;}
+    static boolean routed(Store store,String id){
+        String raw=store.operational("edition-route|"+id);
+        return raw!=null && !Json.tree(raw).path("action").asText().equals("DISTINCT");
+    }
+    private static boolean reassessableHold(Store store,String id){
+        String raw=store.operational("edition-route|"+id);if(raw==null)return false;
+        var route=Json.tree(raw);
+        return route.path("action").asText().equals("HOLD") &&
+            route.path("reason").asText().equals("Further consolidation requires a new editorial assignment") &&
+            !route.path("policy").asText().equals(SELECTION_POLICY);
+    }
     static String mergeId(List<String> ids){return Normalize.hash(POLICY+"|"+String.join("|",ids.stream().sorted().toList()));}
     static List<String> prepare(Store store,Ai ai,Config config,Clock clock,String budgetKey,Store.Guard guard,Paid paid,List<String> blockers) {
         var all=store.editorial();
         var pending=all.stream().filter(a->a.status()==Status.REVIEWED && AutomaticEditor.isAutomatic(a) && !a.sensitive() &&
-            !routed(store,a.id()) && active(store,a,clock)).sorted(Comparator.comparing(Article::createdAt).thenComparing(Article::id)).toList();
+            (!routed(store,a.id()) || reassessableHold(store,a.id())) && active(store,a,clock)).sorted(Comparator.comparing(Article::createdAt).thenComparing(Article::id)).toList();
         if(pending.isEmpty())return List.of();
         var today=clock.instant().atZone(ZoneId.of("Europe/Bratislava")).toLocalDate();
         var published=all.stream().filter(a->a.status()==Status.PUBLISHED && a.publishedAt()!=null &&
             a.publishedAt().atZone(ZoneId.of("Europe/Bratislava")).toLocalDate().equals(today)).sorted(Comparator.comparing(Article::id)).toList();
-        if(pending.size()==1 && published.isEmpty())return List.of();
+        if(pending.size()==1 && published.isEmpty() && !reassessableHold(store,pending.getFirst().id()))return List.of();
         if(pending.size()>12 || published.size()>24)throw new IllegalStateException("Edition selection input budget exceeded");
         var proposals=pending.stream().map(a->item(store,a)).toList();var history=published.stream().map(a->item(store,a)).toList();
         if(Json.write(List.of(proposals,history)).length()>200000)throw new IllegalStateException("Edition selection input budget exceeded");
-        String hash=Normalize.hash(Json.write(List.of(POLICY,today.toString(),ai.editorModel(),proposals,history)));
+        String hash=Normalize.hash(Json.write(List.of(SELECTION_POLICY,today.toString(),ai.editorModel(),proposals,history)));
         String path="edition-plans/"+hash+".json";String raw=store.optionalBlob("articles",path);
-        var plan=raw==null?paid.call(()->ai.edition(proposals,history)):Json.read(raw,EditionPlan.class);
+        EditionPlan plan;
+        if(raw==null) {
+            String proposalPath="edition-plans/"+hash+".proposed.json";
+            String cached=store.optionalBlob("articles",proposalPath);
+            var proposed=cached==null?paid.call(()->ai.edition(proposals,history)):Json.read(cached,EditionPlan.class);
+            validate(proposed,proposals,history);guard.check();
+            if(cached==null)store.putBlob("articles",proposalPath,Json.write(proposed));
+            plan=proposed.groups().isEmpty()?proposed:paid.call(()->ai.reviewEdition(proposed,proposals,history));
+            validate(plan,proposals,history);validateReview(proposed,plan);
+        } else plan=Json.read(raw,EditionPlan.class);
         validate(plan,proposals,history);guard.check();if(raw==null)store.putBlob("articles",path,Json.write(plan));
+        // A previous broad chain HOLD may be reconsidered once under the stricter policy. Keep the
+        // old plan immutable; only an audited fresh decision can make its unlisted article distinct.
+        var grouped=plan.groups().stream().flatMap(g->g.articleIds().stream()).collect(java.util.stream.Collectors.toSet());
+        for(var a:pending)if(reassessableHold(store,a.id()) && !grouped.contains(a.id())) {
+            String previous=store.operational("edition-route|"+a.id());
+            route(store,a.id(),Map.of("action","DISTINCT","plan",path,"policy",SELECTION_POLICY,"previous",Json.tree(previous),"reason","Reassessed under concrete-event policy"),guard);
+        }
         var byId=new HashMap<String,Article>();pending.forEach(a->byId.put(a.id(),a));var children=new ArrayList<String>();
         for(var group:plan.groups()) {
             guard.check();
@@ -40,7 +67,7 @@ final class EditionDesk {
             var parents=group.articleIds().stream().sorted().map(byId::get).toList();String id=mergeId(group.articleIds());
             // A merged article never starts an automatic merge chain.
             if(parents.stream().anyMatch(a->store.operational("merge|"+a.id())!=null)) {
-                for(var parent:parents)route(store,parent.id(),Map.of("action","HOLD","plan",path,"reason","Further consolidation requires a new editorial assignment"),guard);
+                for(var parent:parents)route(store,parent.id(),Map.of("action","HOLD","plan",path,"policy",SELECTION_POLICY,"reason","Further consolidation requires a new editorial assignment"),guard);
                 blockers.add("Further edition merge held: "+id);continue;
             }
             var snapshots=parents.stream().map(a->{var d=draft(store,a);return new Parent(a.id(),Normalize.hash(Json.write(d)),d);}).toList();
@@ -96,6 +123,9 @@ final class EditionDesk {
             if(g.action().equals("MERGE")) {if(++merges>2 || g.articleIds().size()<2 || g.publishedArticleId()!=null || g.instructions().isEmpty())throw new IllegalArgumentException("Invalid edition merge");}
             else if(!g.action().equals("DUPLICATE") || !history.contains(g.publishedArticleId()))throw new IllegalArgumentException("Invalid edition duplicate");
         }
+    }
+    static void validateReview(EditionPlan proposed,EditionPlan reviewed) {
+        if(!proposed.groups().containsAll(reviewed.groups()))throw new IllegalArgumentException("Edition review changed a proposed group");
     }
     private EditionDesk() {}
 }

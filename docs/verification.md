@@ -1,5 +1,13 @@
 # Verification record
 
+## Full source extraction and concrete-event edition review — 18 October 2026
+
+145 offline tests and 11 Azure SDK/Azurite integration tests passed. Regression tests cover all scoped Úrad vlády paragraphs, exclusion of a global banner, nested/overlapping selector deduplication, late-paragraph evidence at publication, rejection of a broad cross-event merge by an independent routing review, audited reassessment of legacy chain holds, preservation of routed parents, interrupted-review proposal reuse, and exhausted budgets between proposal and review. Adapter contracts verify the stronger model, full texts and unchanged proposal inputs for the routing review, and explicit event-status instructions for writing and final approval. The SDK merge scenario now accounts for seven paid-attempt reservations including the new independent routing review; no real AI was used.
+
+An opt-in read-only live test fetched both original Úrad vlády pages through the production `PublicationCheck`/robots/host rules: JESS returned 3,438 body characters and Martin 1,934, matching the complete archived body sizes rather than the earlier 235/429-character refreshes. This test made no AI calls and wrote no production data. It can be repeated with `mvn -f backend/pom.xml '-Dtest=OfficialResearchLiveIT#publicationReadsFullUvJESSAndMartinOriginalsWithoutAIOrStorageWrites' '-Dresearch.integration=true' test`.
+
+The changes apply to the editorial system. No individual article was edited, no private approval was overridden, no budget was reset and no manual edition was invoked. Prompt/contract tests do not guarantee that future model judgments are correct or that every edition reaches three publications. The separate previously diagnosed oversized-claim-map and unknown-evidence-ID retry failures are outside this change.
+
 ## Edition overlap and merged writing — 17 October 2026
 
 139 offline tests and 11 Azure SDK/Azurite integration tests passed. New scenarios cover two differently titled institution-specific budget drafts becoming one verified publication, preservation of unrelated stories and institutional perspectives, same-day published history across manual/scheduled scopes, valid new developments, invalid decision IDs/group overlap, no publication fallback after merge failure, no merge/revision chains, proposal reuse, interrupted routing recovery, concept-budget exhaustion and independent ad hoc recovery. A full edition with unused reserve articles buys no further selection. Adapter tests verify the stronger edition model, full candidate text inputs, writer-model synthesis and exact original excerpt references.

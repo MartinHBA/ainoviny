@@ -12,6 +12,19 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class OfficialResearchTest {
     static byte[] bytes(String s){return s.getBytes(StandardCharsets.UTF_8);}
+    @Test void fullArticleExtractionKeepsAllScopedParagraphsWithoutBannerAndDeduplicatesNestedAlternatives() {
+        var page=Jsoup.parse("<p class='govuk-body'>Global site banner</p><main id='page-content'>"+
+            "<p class='govuk-body'>Vláda oznámila pripravovanú transakciu.</p>"+
+            "<p class='govuk-body'>Vlastníctvo sa má zmeniť po dokončení prevodu.</p>"+
+            "<p class='govuk-body'>Financovanie a ďalšie míľniky zostávajú podmienkou.</p></main>");
+        assertEquals("Vláda oznámila pripravovanú transakciu. Vlastníctvo sa má zmeniť po dokončení prevodu. Financovanie a ďalšie míľniky zostávajú podmienkou.",
+            OfficialResearch.body(page,ResearchRegistry.site("uv-sr")));
+        var nested=Jsoup.parse("<nav>Global menu</nav><article><div class='entry-content'><p>Prvý odsek.</p>"+
+            "<nav>Inner menu</nav><p>Druhý odsek.</p></div><footer>Related links</footer></article><article><p>Tretí odsek.</p></article>");
+        assertEquals("Prvý odsek. Druhý odsek. Tretí odsek.",OfficialResearch.body(nested,"article, .entry-content, article p"));
+        assertTrue(nested.text().contains("Inner menu")); // Original DOM remains reusable for links.
+        assertThrows(IllegalArgumentException.class,()->OfficialResearch.body(page,".missing-article"));
+    }
     @Test void officialSearchLoadsScopedOriginalAndStoresItAsReusableContextOnly() {
         var store=new MemoryStore();var seed=Fixtures.release("lookup-primary");store.collect(seed);var requested=new ArrayList<String>();
         String url="https://www.rrz.sk/synthetic-budget-assessment/";String body="Syntetické hodnotenie rozpočtu upozorňuje na predpoklady príjmov a riziká verejného dlhu. ".repeat(3);

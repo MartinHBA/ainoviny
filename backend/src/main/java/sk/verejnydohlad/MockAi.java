@@ -27,6 +27,7 @@ public final class MockAi implements Ai {
     public String editorModel() { return "mock-offline-editor"; }
     public String model() { return "mock-offline-synthetic"; }
     public EditionPlan edition(List<EditionItem> pending,List<EditionItem> published){return new EditionPlan(List.of());}
+    public EditionPlan reviewEdition(EditionPlan proposed,List<EditionItem> pending,List<EditionItem> published){return proposed;}
     public List<StoryPitch> commission(List<Release> sources,List<Article> history) {
         return sources.stream().filter(s->s.title().startsWith("[SYNTHETIC]")).limit(6)
             .map(s->new StoryPitch(s.id(),List.of(s.id()),"Čo uvádza syntetický testovací podklad?","EXPLAINER",80,"Synthetic fixture only")).toList();

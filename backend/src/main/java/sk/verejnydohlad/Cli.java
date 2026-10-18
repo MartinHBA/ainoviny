@@ -60,7 +60,7 @@ public final class Cli {
             var item=items.getFirst(); String body=item.body();
             if(!s.bodySelector().isBlank()) {
                 robots.requireAllowed(item.url(),s.allowedHosts());
-                body=Normalize.text(org.jsoup.Jsoup.parse(new String(http.get(item.url(),s.allowedHosts()),java.nio.charset.StandardCharsets.UTF_8)).select(s.bodySelector()).outerHtml());
+                body=OfficialResearch.body(org.jsoup.Jsoup.parse(new String(http.get(item.url(),s.allowedHosts()),java.nio.charset.StandardCharsets.UTF_8)),s.bodySelector());
             }
             if(body.length()<120) throw new IllegalStateException("No usable body: "+s.sourceId());
             System.out.println(s.sourceId()+": items="+items.size()+" bodyChars="+body.length()+" url="+item.url());

@@ -8,6 +8,23 @@ import sk.verejnydohlad.Models.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class NewsroomDiscoveryTest {
+    @Test void currentUvPublicationEvidenceIncludesLaterParagraphsAndStillRequiresExactSourceSupport(){
+        String url="https://www.vlada.gov.sk/tlacove-spravy/synthetic-construction-milestone/";
+        String first="Úrad vlády informoval o dokončení hrubej stavby novej nemocnice. Ide o oznámený stavebný míľnik, po ktorom pokračujú ďalšie práce.";
+        String last="Podľa oznámenia sa otvorenie plánuje na prelome rokov 2028 až 2029; nejde o už otvorenú nemocnicu.";
+        var r=new Release(Normalize.hash(url),"uv-sr","Úrad vlády SR",url,Fixtures.CLOCK.instant(),Fixtures.CLOCK.instant(),"Stavebný míľnik",first+" "+last,Normalize.hash(first+" "+last),"fixture.json");
+        var check=PublicationCheck.official((u,h)->("<p class='govuk-body'>Unrelated site banner</p><main id='page-content'>"+
+            "<p class='govuk-body'>"+first+"</p><p class='govuk-body'>"+last+"</p></main>").getBytes(StandardCharsets.UTF_8));
+        try(var guard=new MemoryStore().lock()) {
+            var current=check.refresh(List.of(r),guard,Instant.now().plusSeconds(90)).getFirst();
+            assertEquals(r.body(),current.body());assertFalse(current.body().contains("banner"));
+            String title="Vláda oznámila stavebný míľnik",perex="Podľa oznámenia bola dokončená hrubá stavba nemocnice, ďalšie práce pokračujú.";
+            var draft=new Draft(title,perex,"Slovensko",last,List.of(new Claim(title,r.id(),first),new Claim(perex,r.id(),first),new Claim(last,r.id(),last)));
+            assertTrue(Validation.grounded(draft,List.of(current),new Verification(true,false,List.of())).passed());
+            var truncated=new Release(r.id(),r.sourceId(),r.organization(),r.originalUrl(),r.publishedAt(),r.collectedAt(),r.title(),first,Normalize.hash(first),r.blobPath());
+            assertFalse(Validation.grounded(draft,List.of(truncated),new Verification(true,false,List.of())).passed());
+        }
+    }
     @Test void publicationCanUseFreshOfficialFeedForUnloadedHtmlButCannotReuseArchivedOrDifferentArticleText(){
         var fixture=ResearchFlowTest.source("current-feed","ifp-sr");String url="https://ifp.sk/current-report/";
         var source=new Release(Normalize.hash(url),"ifp-sr","IFP",url,fixture.publishedAt(),fixture.collectedAt(),fixture.title(),fixture.body(),fixture.contentHash(),fixture.blobPath());
