@@ -127,6 +127,7 @@ public final class AzureStore implements Store {
         if(Json.write(a).length()>30000) throw new IllegalArgumentException("Article metadata exceeds Table property limit");
         return new TableEntity(NEWSROOM, key).addProperty("payload", Json.write(a)).addProperty("status", a.status().name())
             .addProperty("category", a.category()).addProperty("editionDate", a.editionDate())
+            .addProperty("editionRevision",a.editionRevision()==null?"":a.editionRevision())
             .addProperty("articleId",a.id()).addProperty("slug",a.slug()).addProperty("title",a.title()).addProperty("perex",a.perex())
             .addProperty("createdAt",a.createdAt().toString()).addProperty("publishedAt",a.publishedAt()==null?"":a.publishedAt().toString())
             .addProperty("blobPath",a.blobPath()).addProperty("sourceIds",Json.write(a.sourceIds())).addProperty("sourceUrls",Json.write(a.sourceUrls()));
@@ -150,9 +151,63 @@ public final class AzureStore implements Store {
         if(!scope.equals("scheduled") && !RunScope.manualLabel(scope))throw new IllegalArgumentException("Invalid publication scope");
         var canonical = articleEntity(a, "id|" + a.id()).addProperty("publicationScope",scope); canonical.addProperty("odata.etag", version);
         String key = publicKey(a);
-        articles.submitTransaction(List.of(new TableTransactionAction(TableTransactionActionType.UPDATE_REPLACE, canonical, true),
+        var actions=new ArrayList<TableTransactionAction>(List.of(new TableTransactionAction(TableTransactionActionType.UPDATE_REPLACE, canonical, true),
             new TableTransactionAction(TableTransactionActionType.CREATE, articleEntity(a, key).addProperty("publicationScope",scope)),
             new TableTransactionAction(TableTransactionActionType.CREATE, articleEntity(a, "slug|" + a.slug()).addProperty("publicationScope",scope))));
+        if(a.editionRevision()!=null) {
+            var active=activeRevision(a.editionDate());if(active==null || !active.id().equals(a.editionRevision()))throw new IllegalStateException("Only the active revision may publish directly");
+            var ids=new ArrayList<>(active.articleIds());if(!ids.contains(a.id()))ids.add(a.id());if(ids.size()>3)throw new IllegalStateException("Edition publication limit reached");
+            var updated=new EditionRevision(active.id(),active.date(),active.state(),active.previousId(),active.startedAt(),active.completedAt(),List.copyOf(ids),active.errors());
+            var pointer=get(articles,NEWSROOM,"edition|"+active.date());var row=new TableEntity(NEWSROOM,pointer.getRowKey()).addProperty("payload",Json.write(updated));row.addProperty("odata.etag",pointer.getETag());
+            actions.add(new TableTransactionAction(TableTransactionActionType.UPDATE_REPLACE,row,true));
+            actions.add(new TableTransactionAction(TableTransactionActionType.UPSERT_REPLACE,new TableEntity(NEWSROOM,"revision|"+active.id()).addProperty("payload",Json.write(updated)).addProperty("state","ACTIVE").addProperty("editionDate",active.date())));
+        }
+        articles.submitTransaction(actions);
+    }
+    public void stage(Article a,String version,String scope) {
+        if(a.editionRevision()==null || !RunScope.manualLabel(scope))throw new IllegalArgumentException("Invalid staged publication");
+        var row=articleEntity(a,"id|"+a.id()).addProperty("publicationScope",scope);row.addProperty("odata.etag",version);
+        articles.updateEntityWithResponse(row,TableEntityUpdateMode.REPLACE,true,Duration.ofSeconds(20),null);
+    }
+    public EditionRevision revision(String id){ValidationRevision.id(id);var e=get(articles,NEWSROOM,"revision|"+id);return e==null?null:Json.read((String)e.getProperty("payload"),EditionRevision.class);}
+    public EditionRevision activeRevision(String date){java.time.LocalDate.parse(date);var e=get(articles,NEWSROOM,"edition|"+date);return e==null?null:Json.read((String)e.getProperty("payload"),EditionRevision.class);}
+    public void revision(EditionRevision revision){ValidationRevision.id(revision.id());articles.upsertEntity(new TableEntity(NEWSROOM,"revision|"+revision.id()).addProperty("payload",Json.write(revision)).addProperty("state",revision.state()).addProperty("editionDate",revision.date()));}
+    public void activate(EditionRevision revision){
+        var plan=Reedition.activation(this,revision);var actions=new ArrayList<TableTransactionAction>();
+        for(var row:plan.old()) {
+            var a=row.value();var archived=a.state(Status.SUPERSEDED,a.reviewedAt(),a.reviewer(),a.approvedHash(),a.publishedAt(),a.blobPath());
+            var canonical=articleEntity(archived,"id|"+a.id());canonical.addProperty("odata.etag",row.version());
+            actions.add(new TableTransactionAction(TableTransactionActionType.UPDATE_REPLACE,canonical,true));
+            actions.add(new TableTransactionAction(TableTransactionActionType.DELETE,new TableEntity(NEWSROOM,publicKey(a))));
+            actions.add(new TableTransactionAction(TableTransactionActionType.DELETE,new TableEntity(NEWSROOM,"slug|"+a.slug())));
+        }
+        for(var row:plan.cancelled()) {
+            var a=row.value();var cancelled=a.state(Status.CANCELLED,a.reviewedAt(),a.reviewer(),a.approvedHash(),a.publishedAt(),a.blobPath());
+            var canonical=articleEntity(cancelled,"id|"+a.id());canonical.addProperty("odata.etag",row.version());
+            actions.add(new TableTransactionAction(TableTransactionActionType.UPDATE_REPLACE,canonical,true));
+        }
+        for(var row:plan.fresh()) {
+            var a=row.value();String scope=publicationScope(a.id());
+            // Canonical rows already contain checked, private staged content. Their ETags are part
+            // of the same transaction as both public indexes and the active edition marker.
+            var canonical=articleEntity(a,"id|"+a.id()).addProperty("publicationScope",scope);canonical.addProperty("odata.etag",row.version());
+            actions.add(new TableTransactionAction(TableTransactionActionType.UPDATE_REPLACE,canonical,true));
+            actions.add(new TableTransactionAction(TableTransactionActionType.CREATE,articleEntity(a,publicKey(a)).addProperty("publicationScope",scope)));
+            actions.add(new TableTransactionAction(TableTransactionActionType.CREATE,articleEntity(a,"slug|"+a.slug()).addProperty("publicationScope",scope)));
+        }
+        var pointer=get(articles,NEWSROOM,"edition|"+revision.date());
+        var active=new TableEntity(NEWSROOM,"edition|"+revision.date()).addProperty("payload",Json.write(revision));
+        if(pointer==null)actions.add(new TableTransactionAction(TableTransactionActionType.CREATE,active));
+        else {active.addProperty("odata.etag",pointer.getETag());actions.add(new TableTransactionAction(TableTransactionActionType.UPDATE_REPLACE,active,true));}
+        actions.add(new TableTransactionAction(TableTransactionActionType.UPSERT_REPLACE,new TableEntity(NEWSROOM,"revision|"+revision.id()).addProperty("payload",Json.write(revision)).addProperty("state",revision.state()).addProperty("editionDate",revision.date())));
+        if(revision.previousId()!=null) {
+            var previous=revision(revision.previousId());
+            if(previous==null)throw new IllegalStateException("Missing prior edition revision");
+            var superseded=new EditionRevision(previous.id(),previous.date(),"SUPERSEDED",previous.previousId(),previous.startedAt(),previous.completedAt(),previous.articleIds(),previous.errors());
+            actions.add(new TableTransactionAction(TableTransactionActionType.UPSERT_REPLACE,new TableEntity(NEWSROOM,"revision|"+previous.id()).addProperty("payload",Json.write(superseded)).addProperty("state","SUPERSEDED").addProperty("editionDate",previous.date())));
+        }
+        if(actions.size()>100)throw new IllegalStateException("Edition replacement transaction exceeds bounded size");
+        articles.submitTransaction(actions);
     }
     public String publicationScope(String id) {
         var e=get(articles,NEWSROOM,"id|"+id);return e==null || e.getProperty("publicationScope")==null?"scheduled":(String)e.getProperty("publicationScope");
@@ -224,11 +279,16 @@ public final class AzureStore implements Store {
     public String operational(String key){var e=get(sources,"ops",key);return e==null?null:(String)e.getProperty("payload");}
     public void operational(String key,String payload){sources.upsertEntity(new TableEntity("ops",key).addProperty("payload",payload));}
     public List<StoryOrder> orders(){
+        return orders("");
+    }
+    public List<StoryOrder> orders(String prefix){
         var result=new ArrayList<StoryOrder>();
-        for(var e:query(sources,"PartitionKey eq 'ops' and RowKey ge 'story|' and RowKey lt 'story}'",100))
+        if(!prefix.isEmpty() && !prefix.matches("revision\\|[a-f0-9-]{36}\\|"))throw new IllegalArgumentException("Invalid revision prefix");
+        for(var e:query(sources,"PartitionKey eq 'ops' and RowKey ge '"+prefix+"story|' and RowKey lt '"+prefix+"story}'",100))
             result.add(Json.read((String)e.getProperty("payload"),StoryOrder.class));
         return result;
     }
+    private static final class ValidationRevision {static void id(String id){if(id==null || !UUID.fromString(id).toString().equals(id))throw new IllegalArgumentException("Invalid edition revision ID");}}
     private static PagedIterable<TableEntity> query(TableClient t, String filter, int pageSize) {
         return t.listEntities(new ListEntitiesOptions().setFilter(filter).setTop(pageSize), Duration.ofSeconds(30), null);
     }

@@ -11,6 +11,7 @@ class MemoryStore implements Store {
     final Map<String,Budget> budgets=new HashMap<>(); boolean locked=false, failPublish=false; int version=0;
     final Map<String,String> publicationScopes=new HashMap<>();final List<String> runScopes=new ArrayList<>();
     final Map<String,String> operations=new HashMap<>();
+    final Map<String,EditionRevision> revisions=new HashMap<>(),activeRevisions=new HashMap<>();boolean failActivate;
     public void initialize(List<Source> s) {}
     public Guard lock() { if(locked) throw new IllegalStateException("locked"); locked=true; return new Guard(){public void check(){if(!locked)throw new IllegalStateException("lost");}public void close(){locked=false;}}; }
     public void putBlob(String c,String p,String v) { String key=c+"/"+p; if(blobs.containsKey(key)&&!blobs.get(key).equals(v))throw new IllegalStateException("immutable"); blobs.put(key,v); }
@@ -43,4 +44,17 @@ class MemoryStore implements Store {
     public String operational(String key){return operations.get(key);}
     public void operational(String key,String payload){operations.put(key,payload);}
     public List<StoryOrder> orders(){return operations.entrySet().stream().filter(e -> e.getKey().startsWith("story|")).map(e -> Json.read(e.getValue(),StoryOrder.class)).toList();}
+    public List<StoryOrder> orders(String prefix){return operations.entrySet().stream().filter(e->e.getKey().startsWith(prefix+"story|")).map(e->Json.read(e.getValue(),StoryOrder.class)).toList();}
+    public EditionRevision revision(String id){return revisions.get(id);}
+    public EditionRevision activeRevision(String date){return activeRevisions.get(date);}
+    public void revision(EditionRevision r){revisions.put(r.id(),r);}
+    public void stage(Article a,String v,String scope){if(failPublish)throw new IllegalStateException("injected staging failure");updateArticle(a,v);publicationScopes.put(a.id(),scope);}
+    public void activate(EditionRevision r){
+        var plan=Reedition.activation(this,r);if(failActivate)throw new IllegalStateException("injected activation failure");
+        for(var row:plan.old()){var a=row.value();updateArticle(a.state(Status.SUPERSEDED,a.reviewedAt(),a.reviewer(),a.approvedHash(),a.publishedAt(),a.blobPath()),row.version());publicArticles.remove(a.slug());}
+        for(var row:plan.cancelled()){var a=row.value();updateArticle(a.state(Status.CANCELLED,a.reviewedAt(),a.reviewer(),a.approvedHash(),a.publishedAt(),a.blobPath()),row.version());}
+        for(var row:plan.fresh()){updateArticle(row.value(),row.version());publicArticles.put(row.value().slug(),row.value());}
+        if(r.previousId()!=null){var old=revisions.get(r.previousId());revisions.put(old.id(),new EditionRevision(old.id(),old.date(),"SUPERSEDED",old.previousId(),old.startedAt(),old.completedAt(),old.articleIds(),old.errors()));}
+        revisions.put(r.id(),r);activeRevisions.put(r.date(),r);
+    }
 }

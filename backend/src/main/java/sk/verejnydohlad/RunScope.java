@@ -3,7 +3,7 @@ package sk.verejnydohlad;
 import java.time.*;
 import java.util.UUID;
 
-/** Independent manual ledger; scheduled work retains the Bratislava-day ledger. */
+/** Manual request identity. Reedition maps it to a private edition cycle and its shared revision ledger. */
 record RunScope(String id) {
     RunScope {
         if(!"scheduled".equals(id) && (id==null || !UUID.fromString(id).toString().equals(id)))throw new IllegalArgumentException("Invalid manual run ID");

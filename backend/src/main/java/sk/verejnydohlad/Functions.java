@@ -25,16 +25,25 @@ public final class Functions {
     @FunctionName("PrepareEdition")
     public void prepare(@TimerTrigger(name="timer",schedule="0 0 9,15,21 * * *") String timer,ExecutionContext context) {
         var app=App.instance();if(!app.config.newsroomFlow())return;
-        var result=new Newsroom(app.store,app.ai,app.config,java.time.Clock.systemUTC(),app.config.aiMode().equals("azure")?new OfficialResearch():ResearchLookup.archiveOnly()).run(true,RunScope.scheduled(),true);
+        var result=new Reedition(app.store,app.ai,app.config,java.time.Clock.systemUTC()).run(true,RunScope.scheduled(),true);
         context.getLogger().info(Json.write(Map.of("mode","PREPARE","result",result)));
     }
     @FunctionName("AdHocEdition")
     public void manual(@QueueTrigger(name="input",queueName="editorial-adhoc",connection="AzureWebJobsStorage") String input,ExecutionContext context) {
         execute(RunScope.manualInput(input),context);
     }
+    @FunctionName("ReeditionStatus")
+    public HttpResponseMessage revisionStatus(@HttpTrigger(name="request",methods={HttpMethod.GET},authLevel=AuthorizationLevel.FUNCTION,route="editorial/reeditions/{id}") HttpRequestMessage<Optional<String>> request,@BindingName("id") String id,ExecutionContext context) {
+        try {
+            if(!UUID.fromString(id).toString().equals(id))throw new IllegalArgumentException("Invalid revision ID");
+            var store=App.instance().store;var revision=store.revision(id);
+            Object result=revision==null?Map.of("error","Edition revision not found"):Map.of("revision",revision,"budget",store.budget("edition|"+revision.date()+"|"+id));
+            return request.createResponseBuilder(revision==null?HttpStatus.NOT_FOUND:HttpStatus.OK).header("Content-Type","application/json; charset=utf-8").header("Cache-Control","no-store").body(Json.write(result)).build();
+        }catch(IllegalArgumentException e){return request.createResponseBuilder(HttpStatus.BAD_REQUEST).header("Cache-Control","no-store").body("Invalid revision ID").build();}
+    }
     private void execute(RunScope scope,ExecutionContext context) {
         context.getLogger().info(Json.write(Map.of("event","pipeline-started","scope",scope.label())));
-        var result=App.instance().pipeline.run(true,scope);context.getLogger().info(Json.write(Map.of("scope",scope.label(),"result",result)));
+        var app=App.instance();var result=new Reedition(app.store,app.ai,app.config,java.time.Clock.systemUTC()).run(true,scope,false);context.getLogger().info(Json.write(Map.of("scope",scope.label(),"result",result)));
     }
     private HttpResponseMessage response(HttpRequestMessage<?> request,ExecutionContext context,Supplier<Object> action) {
         try {

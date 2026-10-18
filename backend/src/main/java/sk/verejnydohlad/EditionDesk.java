@@ -64,7 +64,7 @@ final class EditionDesk {
                 for(String id:group.articleIds())route(store,id,Map.of("action","DUPLICATE","publishedArticleId",group.publishedArticleId(),"plan",path,"reason",group.reason()),guard);
                 blockers.add("Same story already published: "+String.join(",",group.articleIds()));continue;
             }
-            var parents=group.articleIds().stream().sorted().map(byId::get).toList();String id=mergeId(group.articleIds());
+            var parents=group.articleIds().stream().sorted().map(byId::get).toList();String id=store.workId(mergeId(group.articleIds()));
             // A merged article never starts an automatic merge chain.
             if(parents.stream().anyMatch(a->store.operational("merge|"+a.id())!=null)) {
                 for(var parent:parents)route(store,parent.id(),Map.of("action","HOLD","plan",path,"policy",SELECTION_POLICY,"reason","Further consolidation requires a new editorial assignment"),guard);
@@ -101,7 +101,7 @@ final class EditionDesk {
     private static void route(Store store,String id,Object value,Store.Guard guard){guard.check();store.operational("edition-route|"+id,Json.write(value));}
     static MergeInput input(Store store,String id,Ai ai,Store.Guard guard) {
         var ref=Json.read(store.operational("merge|"+id),MergeRef.class);var input=Json.read(store.blob("articles",ref.inputPath()),MergeInput.class);
-        if(!ref.inputHash().equals(Normalize.hash(Json.write(input))) || !id.equals(mergeId(ref.parentIds())) || !input.policy().equals(POLICY) ||
+        if(!ref.inputHash().equals(Normalize.hash(Json.write(input))) || !id.equals(store.workId(mergeId(ref.parentIds()))) || !input.policy().equals(POLICY) ||
             !input.parents().stream().map(Parent::id).sorted().toList().equals(ref.parentIds().stream().sorted().toList()) ||
             !input.writerModel().equals(ai.model()) || !input.editorModel().equals(ai.editorModel()))throw new IllegalStateException("Invalid edition merge audit");
         for(var parent:input.parents()) {

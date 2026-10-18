@@ -42,4 +42,12 @@ public interface Store {
     default String operational(String key){return null;}
     default void operational(String key,String payload){throw new UnsupportedOperationException("Newsroom state unavailable");}
     default List<StoryOrder> orders(){return List.of();}
+    default List<StoryOrder> orders(String prefix){if(prefix.isEmpty())return orders();throw new UnsupportedOperationException("Scoped orders unavailable");}
+    default String workId(String id){return id;}
+    default String revisionId(){return null;}
+    default EditionRevision revision(String id){throw new UnsupportedOperationException("Edition revisions unavailable");}
+    default EditionRevision activeRevision(String date){return null;}
+    default void revision(EditionRevision revision){throw new UnsupportedOperationException("Edition revisions unavailable");}
+    default void stage(Article article,String version,String scope){throw new UnsupportedOperationException("Private edition staging unavailable");}
+    default void activate(EditionRevision revision){throw new UnsupportedOperationException("Atomic edition activation unavailable");}
 }

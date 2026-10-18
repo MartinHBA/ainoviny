@@ -8,7 +8,7 @@ import sk.verejnydohlad.Models.*;
 /** Local executable using Azure RBAC. No administrative HTTP endpoints are deployed. */
 public final class Cli {
     public static void main(String[] args) throws Exception {
-        if(args.length==0) throw new IllegalArgumentException("Commands: init, collect, run, prepare, newsroom, list, inspect ID, export ID FILE, edit ID FILE, recheck ID, approve ID REVIEWER [--ack-sensitive], reject ID REVIEWER, publish ID, fixture, check-feeds");
+        if(args.length==0) throw new IllegalArgumentException("Commands: init, collect, run [UUID], reedition-status UUID, prepare, newsroom, list, inspect ID, export ID FILE, edit ID FILE, recheck ID, approve ID REVIEWER [--ack-sensitive], reject ID REVIEWER, publish ID, fixture, check-feeds");
         if(args[0].equals("check-feeds")) { checkFeeds(); return; }
         App app=App.instance(); Store store=app.store; var editor=new Editorial(store,Clock.systemUTC());
         switch(args[0]) {
@@ -18,12 +18,13 @@ public final class Cli {
             }
             case "prepare" -> {
                 if(!app.config.newsroomFlow())throw new IllegalStateException("Newsroom flow is disabled");
-                System.out.println(Json.write(new Newsroom(store,app.ai,app.config,Clock.systemUTC(),app.config.aiMode().equals("azure")?new OfficialResearch():ResearchLookup.archiveOnly()).run(true,RunScope.scheduled(),true)));
+                System.out.println(Json.write(new Reedition(store,app.ai,app.config,Clock.systemUTC()).run(true,RunScope.scheduled(),true)));
             }
             case "run" -> {
                 var scope=args.length>1?new RunScope(arg(args,1)):RunScope.adHoc();
-                System.out.println(Json.write(Map.of("scope",scope.label(),"result",app.pipeline.run(true,scope))));
+                System.out.println(Json.write(Map.of("scope",scope.label(),"result",new Reedition(store,app.ai,app.config,Clock.systemUTC()).run(true,scope,false))));
             }
+            case "reedition-status" -> {var revision=store.revision(arg(args,1));System.out.println(Json.write(Map.of("revision",revision==null?Map.of():revision,"budget",revision==null?new Budget(0,List.of()):store.budget("edition|"+revision.date()+"|"+revision.id()))));}
             case "collect" -> { try(var guard=store.lock()) { var errors=new ArrayList<String>(); int n=new Collector().collect(SourceRegistry.load(),store,app.config.maxReleases(),guard,Instant.now().plusSeconds(120),errors); System.out.println(Json.write(Map.of("collected",n,"errors",errors))); } }
             case "list" -> store.editorial().stream().filter(a -> a.status()!=Status.PUBLISHED).forEach(a -> System.out.println(a.id()+" "+a.status()+" "+a.phase()+" grounded="+a.factCheckPassed()+" "+a.title()));
             case "inspect", "export" -> {

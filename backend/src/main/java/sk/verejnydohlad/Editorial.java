@@ -14,6 +14,7 @@ public final class Editorial {
         return publishedCount()>=maxPublished;
     }
     long publishedCount() {
+        if(store.revisionId()!=null)return store.editorial().stream().filter(a->a.status()==Status.PUBLISHED && store.revisionId().equals(a.editionRevision())).count();
         String day=clock.instant().atZone(ZoneId.of("Europe/Bratislava")).toLocalDate().toString();
         return store.editorial().stream().filter(a -> a.status()==Status.PUBLISHED && a.publishedAt()!=null)
             .filter(a -> scope.manual()?scope.label().equals(store.publicationScope(a.id())):
@@ -56,7 +57,7 @@ public final class Editorial {
     public void reject(String id,String reviewer) {
         Validation.id(id); reviewer(reviewer);
         try(var guard=store.lock()) {
-            var old=required(id); if(old.value().status()==Status.PUBLISHED || old.value().status()==Status.REJECTED) throw new IllegalStateException("Article cannot be rejected");
+            var old=required(id); if(!Set.of(Status.DRAFT,Status.REVIEWED).contains(old.value().status())) throw new IllegalStateException("Article cannot be rejected");
             guard.check(); store.updateArticle(old.value().state(Status.REJECTED,clock.instant(),reviewer,null,null,old.value().blobPath()),old.version());
         }
     }
@@ -85,9 +86,11 @@ public final class Editorial {
             now.atZone(ZoneId.of("Europe/Bratislava")).toLocalDate().toString()),old.version(),scope.label());
     }
     static String approvalHash(Article a,String markdown) {
-        return Normalize.hash(Json.write(List.of(a.title(),a.perex(),a.category(),a.sourceUrls(),a.claims(),a.aiModel(),markdown)));
+        var fields=new ArrayList<Object>(List.of(a.title(),a.perex(),a.category(),a.sourceUrls(),a.claims(),a.aiModel(),markdown));
+        if(a.editionRevision()!=null)fields.add(List.of(a.editionRevision(),a.editionDate()));
+        return Normalize.hash(Json.write(fields));
     }
     private Store.Versioned<Article> required(String id) { var a=store.article(id); if(a==null) throw new IllegalArgumentException("Article not found"); return a; }
-    private static void editable(Article a) { if(a.status()==Status.PUBLISHED || a.status()==Status.REJECTED || !a.phase().equals("COMPLETE")) throw new IllegalStateException("Article is not editable"); }
+    private static void editable(Article a) { if(!Set.of(Status.DRAFT,Status.REVIEWED).contains(a.status()) || !a.phase().equals("COMPLETE")) throw new IllegalStateException("Article is not editable"); }
     private static void reviewer(String name) { if(name==null || !name.matches("[\\p{L}\\p{N}@._ +'-]{3,120}")) throw new IllegalArgumentException("Named human reviewer required"); }
 }

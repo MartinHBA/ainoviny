@@ -11,6 +11,36 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @EnabledIfSystemProperty(named="storage.integration",matches="true")
 class AzureStoreIT {
+    @Test void sdkReeditionRebuildsSameInputsAndAtomicallyReplacesOnlyTargetDay(){
+        var config=NewsroomTest.config("MAX_PUBLISHED_ARTICLES_PER_DAY","1");var store=new AzureStore(config);store.initialize(List.of());
+        var clock=Clock.offset(Fixtures.CLOCK,Duration.ofDays(6));var source=Fixtures.release("reedition-sdk-"+UUID.randomUUID());store.collect(source);var ai=new MockAi();var draft=ai.generate(List.of(source));
+        String id=Normalize.hash("legacy-edition|"+source.id()),path="drafts/"+id+"/original.md";store.putBlob("articles",path,draft.markdown());
+        var old=new Article(id,"synthetic-"+id.substring(0,16),draft.title(),draft.perex(),draft.category(),clock.instant(),clock.instant(),null,Status.DRAFT,path,List.of(source.id()),List.of(source.originalUrl()),ai.model(),null,null,null,Normalize.hash(draft.markdown()),true,false,List.of(),draft.claims(),"COMPLETE",0,RunScope.date(clock));
+        old=old.state(Status.REVIEWED,clock.instant(),"AI editor: "+ai.editorModel(),Editorial.approvalHash(old,draft.markdown()),null,path);store.createArticle(old);new Editorial(store,clock,3).publish(id);
+        var scope=RunScope.adHoc();var result=ReeditionTest.desk(store,ai,config,clock).run(false,scope,false);assertEquals(1,result.published(),result.toString());
+        var reopened=new AzureStore(config);var revision=reopened.activeRevision(RunScope.date(clock));assertEquals(scope.id(),revision.id());assertEquals("ACTIVE",reopened.revision(scope.id()).state());
+        var fresh=reopened.article(revision.articleIds().getFirst()).value();assertNotEquals(id,fresh.id());assertEquals(scope.id(),fresh.editionRevision());assertEquals(Status.SUPERSEDED,reopened.article(id).value().status());
+        assertNull(reopened.bySlug(old.slug()));assertNotNull(new PublicApi(reopened).detail(fresh.slug()));assertEquals(1,reopened.orders("revision|"+scope.id()+"|").size());
+        var before=reopened.budget("edition|"+revision.date()+"|"+scope.id());ReeditionTest.desk(reopened,ai,config,clock).run(false,RunScope.scheduled(),false);assertEquals(before,reopened.budget("edition|"+revision.date()+"|"+scope.id()));
+    }
+    @Test void sdkEditionSwapConflictRollsBackOldIndexesCanonicalAndActiveMarkerTogether(){
+        var config=NewsroomTest.config("MAX_PUBLISHED_ARTICLES_PER_DAY","1");var store=new AzureStore(config);store.initialize(List.of());var clock=Clock.offset(Fixtures.CLOCK,Duration.ofDays(7));var ai=new MockAi();
+        var oldSource=Fixtures.release("swap-old-"+UUID.randomUUID());store.collect(oldSource);var d=ai.generate(List.of(oldSource));String oldId=Normalize.hash("swap|"+oldSource.id()),oldPath="drafts/"+oldId+"/original.md";store.putBlob("articles",oldPath,d.markdown());
+        var old=new Article(oldId,"synthetic-"+oldId.substring(0,16),d.title(),d.perex(),d.category(),clock.instant(),clock.instant(),null,Status.DRAFT,oldPath,List.of(oldSource.id()),List.of(oldSource.originalUrl()),ai.model(),null,null,null,Normalize.hash(d.markdown()),true,false,List.of(),d.claims(),"COMPLETE",0,RunScope.date(clock));
+        old=old.state(Status.REVIEWED,clock.instant(),"AI editor: "+ai.editorModel(),Editorial.approvalHash(old,d.markdown()),null,oldPath);store.createArticle(old);new Editorial(store,clock,3).publish(oldId);
+        var scope=RunScope.adHoc();var revision=new EditionRevision(scope.id(),RunScope.date(clock),"BUILDING",null,clock.instant(),null,List.of(),List.of());store.revision(revision);
+        try(var guard=store.lock()) {
+            var work=new EditionWorkStore(store,revision,guard,true);var result=new Newsroom(work,ai,config,clock,ResearchLookup.archiveOnly(),(s,g,end)->new Newsroom.Discovery.Result(0,0,List.of()),PublicationCheck.offline()).run(false,scope,false);assertEquals(1,result.published());
+            var fresh=work.editorial().stream().filter(a->scope.id().equals(a.editionRevision()) && a.status()==Status.PUBLISHED).findFirst().orElseThrow();assertNull(store.bySlug(fresh.slug()));assertNotNull(store.bySlug(old.slug()));
+            var done=new EditionRevision(scope.id(),revision.date(),"ACTIVE",null,revision.startedAt(),clock.instant(),List.of(fresh.id()),List.of());
+            String key="pub|"+String.format(Locale.ROOT,"%019d",Long.MAX_VALUE-fresh.publishedAt().toEpochMilli())+"|"+fresh.id();
+            table("Articles").createEntity(new com.azure.data.tables.models.TableEntity("editorial",key).addProperty("status","CONFLICT"));
+            assertThrows(com.azure.data.tables.models.TableServiceException.class,()->store.activate(done));
+            assertEquals(Status.PUBLISHED,store.article(oldId).value().status());assertNotNull(store.bySlug(old.slug()));assertNull(store.bySlug(fresh.slug()));assertNull(store.activeRevision(revision.date()));assertEquals("BUILDING",store.revision(scope.id()).state());
+            table("Articles").deleteEntity("editorial",key);store.activate(done);
+            assertNull(store.bySlug(old.slug()));assertEquals(Status.SUPERSEDED,store.article(oldId).value().status());assertNotNull(store.bySlug(fresh.slug()));assertEquals(scope.id(),store.activeRevision(revision.date()).id());
+        }
+    }
     @Test void sdkEditionMergePersistsRoutesAndPublishesOneFreshlyReviewedSuccessor(){
         var config=NewsroomTest.config("MAX_AI_CALLS_PER_DAY","7","MAX_PUBLISHED_ARTICLES_PER_DAY","1");var store=new AzureStore(config);store.initialize(List.of());
         var clock=Clock.offset(Fixtures.CLOCK,Duration.ofDays(5));var parents=new ArrayList<Article>();var mock=new MockAi();

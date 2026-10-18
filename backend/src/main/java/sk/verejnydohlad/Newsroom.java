@@ -99,7 +99,7 @@ final class Newsroom {
                         if(store.budget(scope.budgetKey(clock)).articleIds().size()>=Math.max(1,config.maxArticles()-1))break;
                         if(pitch.score()<config.minScore() || !needed(prepare,scope) || !room(scope) || Instant.now().plusSeconds(65).isAfter(deadline))continue;
                         if(pitch.kind().equals("NEWS") && store.release(pitch.primaryId()).publishedAt().isBefore(clock.instant().minus(Duration.ofDays(7))))continue;
-                        String id=storyId(pitch);if(store.article(id)!=null)continue;
+                        String id=store.workId(storyId(pitch));if(store.article(id)!=null)continue;
                         Instant expires=clock.instant().plus(Duration.ofDays(pitch.kind().equals("NEWS")?2:7));
                         var order=new StoryOrder(id,pitch,null,clock.instant(),expires,List.of());
                         if(!reserve(order,scope,guard))break;planned++;
@@ -118,7 +118,7 @@ final class Newsroom {
                 if(EditionDesk.routed(store,parent.id()) || store.operational("merge|"+parent.id())!=null)continue;
                 var oldOrder=commissioned(parent.id());if(oldOrder!=null && oldOrder.parentId()!=null)continue;
                 if(parent.id().equals(SourceInputs.correctionId(SourceInputs.topicId(SourceInputs.seeds(parent)))))continue;
-                String id=revisionId(parent.id());if(store.article(id)!=null)continue;
+                String id=store.workId(revisionId(parent.id()));if(store.article(id)!=null)continue;
                 String feedbackRaw=store.operational("feedback|"+parent.id());
                 if(feedbackRaw!=null && !Json.read(feedbackRaw,RevisionFeedback.class).action().equals("REVISE"))continue;
                 var sources=parent.sourceIds().stream().map(store::release).toList();

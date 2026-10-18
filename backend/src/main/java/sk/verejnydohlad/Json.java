@@ -11,7 +11,11 @@ public final class Json {
         .enable(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES)
         .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
     public static String write(Object value) { try { return MAPPER.writeValueAsString(value); } catch (Exception e) { throw new IllegalArgumentException("JSON serialization failed", e); } }
-    public static <T> T read(String value, Class<T> type) { try { return MAPPER.readValue(value, type); } catch (Exception e) { throw new IllegalArgumentException("Invalid JSON for " + type.getSimpleName(), e); } }
+    public static <T> T read(String value, Class<T> type) { try {
+        // Only this additive field defaults to null in older immutable article records.
+        if(type==Models.Article.class){var node=MAPPER.readTree(value);if(node.isObject() && !node.has("editionRevision"))((com.fasterxml.jackson.databind.node.ObjectNode)node).putNull("editionRevision");return MAPPER.treeToValue(node,type);}
+        return MAPPER.readValue(value, type);
+    } catch (Exception e) { throw new IllegalArgumentException("Invalid JSON for " + type.getSimpleName(), e); } }
     public static JsonNode tree(String value) { try { return MAPPER.readTree(value); } catch (Exception e) { throw new IllegalArgumentException("Invalid JSON", e); } }
     private Json() {}
 }

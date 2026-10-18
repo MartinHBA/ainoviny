@@ -14,7 +14,7 @@ public final class Pipeline {
     public Pipeline(Store store,Ai ai,Config config,Clock clock) {this(store,ai,config,clock,config.aiMode().equals("azure")?new OfficialResearch():ResearchLookup.archiveOnly());}
     Pipeline(Store store,Ai ai,Config config,Clock clock,ResearchLookup lookup) {this(store,ai,config,clock,lookup,RunScope.scheduled());}
     Pipeline(Store store,Ai ai,Config config,Clock clock,ResearchLookup lookup,RunScope scope) { this.store=store; this.ai=ai; this.config=config; this.clock=clock;this.lookup=lookup;this.scope=scope; }
-    public RunResult runAdHoc(boolean collect){return run(collect,RunScope.adHoc());}
+    public RunResult runAdHoc(boolean collect){return new Reedition(store,ai,config,clock).run(collect,RunScope.adHoc(),false);}
     RunResult run(boolean collect,RunScope scope){return new Pipeline(store,ai,config,clock,lookup,scope).run(collect);}
     public RunResult run(boolean collect) {
         if(config.newsroomFlow())return new Newsroom(store,ai,config,clock,lookup).run(collect,scope,false);
